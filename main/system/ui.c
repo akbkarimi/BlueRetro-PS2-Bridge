@@ -178,6 +178,20 @@ static uint8_t preset_idx = 0xFF;       /* Current lightbar preset, 0xFF = none 
 static char toast_buf[24];
 static uint32_t toast_until_ms = 0;
 
+/* Retired legacy IDs remain reserved so MX idle-mode numbers stay ABI-stable. */
+static bool saver_id_enabled(uint8_t id) {
+    return id < SAVER_COUNT && id != SAVER_CLOCK_ANALOG &&
+           id != SAVER_CLOCK_FLIP;
+}
+
+static uint8_t saver_next_enabled(uint8_t id, int dir) {
+    for (int i = 0; i < SAVER_COUNT; i++) {
+        id = (uint8_t)((id + SAVER_COUNT + dir) % SAVER_COUNT);
+        if (saver_id_enabled(id)) return id;
+    }
+    return SAVER_CUBE;
+}
+
 #define TOAST_MS 2000
 
 /* Lightbar colors the touchpad cycles through */
@@ -992,7 +1006,9 @@ static void apply_contrast(void) {
 }
 
 static void saver_pick_and_start(uint32_t t) {
-    saver_cur = (cfg.saver_mode < SAVER_COUNT && !forced_saver) ? (saver_id_t)cfg.saver_mode : (saver_id_t)auto_idx;
+    uint8_t requested = (cfg.saver_mode < SAVER_COUNT && !forced_saver) ? cfg.saver_mode : auto_idx;
+    if (!saver_id_enabled(requested)) requested = SAVER_CLOCK_RECT;
+    saver_cur = (saver_id_t)requested;
     saver_start(saver_cur);
     saver_t0_ms = t;
 }
@@ -1067,7 +1083,7 @@ static void update(void) {
     if (stage == STG_SAVER) {
         if (cfg.saver_mode >= SAVER_COUNT && cfg.saver_cycle_s &&
             (t - saver_t0_ms) / 1000 >= cfg.saver_cycle_s) {
-            auto_idx = (uint8_t)((auto_idx + 1) % SAVER_COUNT);
+            auto_idx = saver_next_enabled(auto_idx, 1);
             saver_pick_and_start(t);
         }
         saver_step(saver_cur);
@@ -1096,7 +1112,7 @@ static void update(void) {
 /* ---------------- Events ---------------- */
 
 static void saver_move(int dir) {
-    auto_idx = (uint8_t)((auto_idx + SAVER_COUNT + dir) % SAVER_COUNT);
+    auto_idx = saver_next_enabled(auto_idx, dir);
     forced_saver = true;        /* A swipe wins over the idle timer and over a fixed saver_mode */
     if (stage == STG_SAVER) {   /* Already showing one: switch right now */
         saver_cur = (saver_id_t)auto_idx;
@@ -1267,7 +1283,7 @@ static void handle_msg(const ui_msg_t *msg) {
         case UI_EVT_SAVER_ENTER:
             /* Shortcut: put the OLED in screensaver mode now */
             forced_saver = true;
-            auto_idx = (cfg.saver_mode < SAVER_COUNT) ? cfg.saver_mode : auto_idx;
+            auto_idx = (cfg.saver_mode < SAVER_COUNT && saver_id_enabled(cfg.saver_mode)) ? cfg.saver_mode : auto_idx;
             if (stage == STG_SAVER) {
                 saver_pick_and_start(now_ms());
             }

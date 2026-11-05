@@ -237,8 +237,11 @@ static const uint8_t seg_digit[10] = {
 
 /* Draw one 7-segment digit inside the box (x, y, w, h) */
 static void seg_draw_digit(int x, int y, int w, int h, int digit) {
-    int t = (h >= 30) ? (h / 6) : 3;    /* segment thickness */
-    int mid = y + h / 2 - t / 2;
+    int t = h / 7;
+    if (t < 2) t = 2;
+    if (t > w / 5) t = w / 5;
+    if (t < 2) t = 2;
+    int mid = y + (h - t) / 2;
     uint8_t seg = (digit >= 0 && digit <= 9) ? seg_digit[digit] : 0;
 
     if (w < 2 * t + 2 || h < 3 * t) {
@@ -272,17 +275,25 @@ void gfx_big_num(int x, int y, int w, int h, int value) {
 }
 
 void gfx_big_hhmm(int x, int y, int w, int h, int hh, int mm, int colon_on) {
-    int t = (h >= 30) ? (h / 6) : 3;
+    /* Keep seven-segment digits tall and narrow instead of stretching each
+     * digit to one quarter of the entire 128-pixel panel. */
+    int t = h / 7;
+    if (t < 2) t = 2;
+    if (t > w / 22) t = w / 22;
+    if (t < 2) t = 2;
+
     int gap = (h >= 30) ? 3 : 2;
-    int colon_w = (t > 5) ? t + 2 : 5;
-    int digit_w = (w - colon_w - 4 * gap) / 4;
+    int colon_w = (t > 4) ? t + 2 : 5;
+    int max_digit_w = (h * 4) / 5;
+    int available_digit_w = (w - colon_w - 4 * gap) / 4;
+    int digit_w = (available_digit_w < max_digit_w) ? available_digit_w : max_digit_w;
     int used = 4 * digit_w + colon_w + 4 * gap;
     int x0 = x + (w - used) / 2;
     int xc = x0 + 2 * digit_w + 2 * gap;
     int dot_y1 = y + h / 3 - t / 2;
     int dot_y2 = y + (2 * h) / 3 - t / 2;
 
-    if (digit_w < 4 || h < 3 * t) {
+    if (digit_w < 2 * t + 2 || h < 3 * t) {
         return;
     }
 
