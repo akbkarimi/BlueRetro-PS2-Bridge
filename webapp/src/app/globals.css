@@ -1,0 +1,278 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * Theme engine (v4.4):
+ *  - The UI is authored with a dark-first neutral palette (zinc/sky/...).
+ *  - Every palette shade used by the app maps to a --mx-* CSS variable,
+ *    so `.dark` on <html> switches the WHOLE app (utility classes flip).
+ *  - Shadcn semantic tokens (background/card/border/primary/...) keep
+ *    their own light values in :root and dark values in .dark.
+ */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  /* neutral scale — flips with the theme */
+  --color-zinc-100: var(--mx-zinc-100);
+  --color-zinc-200: var(--mx-zinc-200);
+  --color-zinc-300: var(--mx-zinc-300);
+  --color-zinc-400: var(--mx-zinc-400);
+  --color-zinc-500: var(--mx-zinc-500);
+  --color-zinc-600: var(--mx-zinc-600);
+  --color-zinc-700: var(--mx-zinc-700);
+  --color-zinc-800: var(--mx-zinc-800);
+  --color-zinc-900: var(--mx-zinc-900);
+  --color-zinc-950: var(--mx-zinc-950);
+
+  /* accent scales — flips with the theme */
+  --color-sky-100: var(--mx-sky-100);
+  --color-sky-200: var(--mx-sky-200);
+  --color-sky-300: var(--mx-sky-300);
+  --color-sky-400: var(--mx-sky-400);
+  --color-sky-600: var(--mx-sky-600);
+  --color-sky-700: var(--mx-sky-700);
+  --color-sky-800: var(--mx-sky-800);
+  --color-sky-900: var(--mx-sky-900);
+  --color-sky-950: var(--mx-sky-950);
+  --color-amber-100: var(--mx-amber-100);
+  --color-amber-200: var(--mx-amber-200);
+  --color-amber-300: var(--mx-amber-300);
+  --color-amber-400: var(--mx-amber-400);
+  --color-amber-800: var(--mx-amber-800);
+  --color-amber-900: var(--mx-amber-900);
+  --color-amber-950: var(--mx-amber-950);
+  --color-emerald-100: var(--mx-emerald-100);
+  --color-emerald-200: var(--mx-emerald-200);
+  --color-emerald-300: var(--mx-emerald-300);
+  --color-emerald-400: var(--mx-emerald-400);
+  --color-emerald-700: var(--mx-emerald-700);
+  --color-emerald-800: var(--mx-emerald-800);
+  --color-orange-200: var(--mx-orange-200);
+  --color-orange-300: var(--mx-orange-300);
+  --color-orange-800: var(--mx-orange-800);
+  --color-red-300: var(--mx-red-300);
+  --color-red-400: var(--mx-red-400);
+  --color-red-500: var(--mx-red-500);
+}
+
+:root {
+  --radius: 0.625rem;
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+  --chart-1: oklch(0.646 0.222 41.116);
+  --chart-2: oklch(0.6 0.118 184.704);
+  --chart-3: oklch(0.398 0.07 227.392);
+  --chart-4: oklch(0.828 0.189 84.429);
+  --chart-5: oklch(0.769 0.188 70.08);
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: oklch(0.708 0 0);
+
+  /* LIGHT app palette: the dark-authored classes (zinc-900 bg, zinc-100 text,
+     zinc-800 borders…) read as a clean light theme after the flip. */
+  --mx-zinc-100: #18181b;
+  --mx-zinc-200: #27272a;
+  --mx-zinc-300: #3f3f46;
+  --mx-zinc-400: #52525b;
+  --mx-zinc-500: #71717a;
+  --mx-zinc-600: #a1a1aa;
+  --mx-zinc-700: #d4d4d8;
+  --mx-zinc-800: #e4e4e7;
+  --mx-zinc-900: #ffffff;
+  --mx-zinc-950: #fafafa;
+  --mx-sky-100: #e0f2fe;
+  --mx-sky-200: #075985;
+  --mx-sky-300: #0369a1;
+  --mx-sky-400: #0284c7;
+  --mx-sky-600: #0284c7;
+  --mx-sky-700: #0369a1;
+  --mx-sky-800: #a8d8f2;
+  --mx-sky-900: #dbeefc;
+  --mx-sky-950: #eff8ff;
+  --mx-amber-100: #fef3c7;
+  --mx-amber-200: #92400e;
+  --mx-amber-300: #a16207;
+  --mx-amber-400: #b45309;
+  --mx-amber-800: #c2882c;
+  --mx-amber-900: #d9a940;
+  --mx-amber-950: #fffbeb;
+  --mx-emerald-100: #d1fae5;
+  --mx-emerald-200: #a7f3d0;
+  --mx-emerald-300: #047857;
+  --mx-emerald-400: #059669;
+  --mx-emerald-700: #86dfb6;
+  --mx-emerald-800: #c9f2df;
+  --mx-orange-200: #9a3412;
+  --mx-orange-300: #c2610c;
+  --mx-orange-800: #f5c39a;
+  --mx-red-300: #dc2626;
+  --mx-red-400: #dc2626;
+  --mx-red-500: #dc2626;
+
+  /* app shell surfaces */
+  --mx-bg: #f6f7f9;
+  --mx-header: rgba(255, 255, 255, 0.88);
+  --mx-grad-a: #eaf2fb;
+  --mx-grad-b: #f3f7fc;
+  --mx-logo: #dbeafe;
+}
+
+.dark {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
+  --chart-1: oklch(0.488 0.243 264.376);
+  --chart-2: oklch(0.696 0.17 162.48);
+  --chart-3: oklch(0.769 0.188 70.08);
+  --chart-4: oklch(0.627 0.265 303.9);
+  --chart-5: oklch(0.645 0.246 16.439);
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.556 0 0);
+
+  /* DARK app palette: Tailwind defaults (the original look) */
+  --mx-zinc-100: #f4f4f5;
+  --mx-zinc-200: #e4e4e7;
+  --mx-zinc-300: #d4d4d8;
+  --mx-zinc-400: #a1a1aa;
+  --mx-zinc-500: #71717a;
+  --mx-zinc-600: #52525b;
+  --mx-zinc-700: #3f3f46;
+  --mx-zinc-800: #27272a;
+  --mx-zinc-900: #18181b;
+  --mx-zinc-950: #09090b;
+  --mx-sky-100: #e0f2fe;
+  --mx-sky-200: #bae6fd;
+  --mx-sky-300: #7dd3fc;
+  --mx-sky-400: #38bdf8;
+  --mx-sky-600: #0284c7;
+  --mx-sky-700: #0369a1;
+  --mx-sky-800: #075985;
+  --mx-sky-900: #0c4a6e;
+  --mx-sky-950: #082f49;
+  --mx-amber-100: #fef3c7;
+  --mx-amber-200: #fef3c7;
+  --mx-amber-300: #fcd34d;
+  --mx-amber-400: #fbbf24;
+  --mx-amber-800: #92400e;
+  --mx-amber-900: #78350f;
+  --mx-amber-950: #451a03;
+  --mx-emerald-100: #d1fae5;
+  --mx-emerald-200: #a7f3d0;
+  --mx-emerald-300: #6ee7b7;
+  --mx-emerald-400: #34d399;
+  --mx-emerald-700: #047857;
+  --mx-emerald-800: #065f46;
+  --mx-orange-200: #fed7aa;
+  --mx-orange-300: #fdba74;
+  --mx-orange-800: #9a3412;
+  --mx-red-300: #fca5a5;
+  --mx-red-400: #f87171;
+  --mx-red-500: #ef4444;
+
+  /* app shell surfaces */
+  --mx-bg: #0a0f1a;
+  --mx-header: rgba(12, 19, 34, 0.9);
+  --mx-grad-a: #0a1628;
+  --mx-grad-b: #0c1220;
+  --mx-logo: #1e3a5f;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--mx-zinc-700);
+    border-radius: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}

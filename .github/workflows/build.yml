@@ -1,0 +1,190 @@
+name: build
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    if: ${{ (github.repository_owner == 'barrenechea') || (github.event_name == 'workflow_dispatch') }}
+    strategy:
+      # The targets are independent, so one broken config should not hide the
+      # state of the other 48. Without this, a single failure cancels the run and
+      # each remaining breakage costs another full round trip to discover.
+      fail-fast: false
+      matrix:
+        hw_version: [hw1, hw2]
+        br_config:
+          [3do, cdi, dreamcast, gamecube, gbahd, genesis, jaguar, jvs_arcade, n64, nes,
+          parallel_1p, parallel_1p_3v3, parallel_2p, parallel_2p_3v3, pc_engine, pcfx,
+          playstation, saturn, snes, universal, virtualboy, wii_extension]
+        include:
+          # hw2 only, so it cannot go in the br_config list above: that is
+          # crossed with both hw versions and there is no configs/hw1 variant.
+          - hw_version: hw2
+            br_config: ibluecontrol_snes
+          - hw_version: dbg
+            br_config: pad_test
+          - hw_version: dbg
+            br_config: qemu
+          - hw_version: dbg
+            br_config: qemu_bt_trace_replay
+          - hw_version: dbg
+            br_config: qemu_bt_trace_replay_test
+    runs-on: ubuntu-latest
+    # Espressif's official image. A prebuilt toolchain beats installing one on
+    # every job. release-v6.1 follows the 6.1.x patch releases, so a rebuild
+    # of an old commit may use a newer 6.1 than it first did.
+    container:
+      image: espressif/idf:release-v6.1
+    outputs:
+      br_version: ${{ env.br_version }}
+
+    steps:
+    - name: Checkout repo
+      uses: actions/checkout@v7
+      with:
+        submodules: recursive
+        fetch-depth: 0
+    - name: Build with ESP-IDF
+      shell: bash
+      run: |
+        # The workspace is checked out by the runner user, but this container
+        # runs as root, so git rejects the repo as "dubious ownership" and every
+        # git describe below yields an empty string - silently shipping firmware
+        # with no version in esp_app_desc, and unversioned artifact names.
+        git config --global --add safe.directory "$GITHUB_WORKSPACE"
+        # Actions overrides the image's entrypoint, so the IDF environment it
+        # would otherwise set up has to be sourced by hand.
+        . $IDF_PATH/export.sh
+        # A tag is the version verbatim. Otherwise build a dev version from the
+        # commit's own year.month, commits since the last tag, and its sha.
+        if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+          br_version="${GITHUB_REF#refs/tags/}"
+        else
+          cal=$(git log -1 --format=%cd --date=format:%y.%m)
+          last=$(git describe --tags --abbrev=0 --match "v[0-9]*" 2>/dev/null)
+          n=$(git rev-list --count ${last:+$last..}HEAD)
+          br_version="v${cal}-dev-${n}-g$(git rev-parse --short HEAD)"
+        fi
+        echo "br_version=$br_version" >> $GITHUB_ENV
+        rm -fr build
+        # Version alone: project_name already carries hw and config, and the BLE
+        # characteristic that reports this is 23 bytes.
+        echo "$br_version" | cut -c -31 > version.txt
+        cat version.txt
+        cp configs/${{ matrix.hw_version }}/${{ matrix.br_config }} sdkconfig
+        BR_HW=_${{ matrix.hw_version }} BR_SYS=_${{ matrix.br_config }} idf.py reconfigure build
+    - name: Stage artifact
+      shell: bash
+      run: |
+        # One dir per board: every job otherwise writes the same paths.
+        out="artifact/${{ matrix.hw_version }}_${{ matrix.br_config }}"
+        mkdir -p "$out/bootloader" "$out/partition_table" "$out/ota"
+        cp build/bootloader/bootloader.bin "$out/bootloader/"
+        cp build/partition_table/partition-table.bin "$out/partition_table/"
+        cp build/ota_data_initial.bin "$out/ota/"
+        cp build/BlueRetro*.bin "$out/"
+    - name: Upload artifact
+      uses: actions/upload-artifact@v7
+      with:
+        name: ${{ matrix.hw_version }}_${{ matrix.br_config }}
+        path: artifact
+        if-no-files-found: error
+
+  package:
+    needs: build
+    runs-on: ubuntu-latest
+    # Needed by the cleanup step below to list and delete this run's artifacts.
+    permissions:
+      actions: write
+
+    steps:
+      - name: Merge Artifacts HW1
+        uses: actions/upload-artifact/merge@v7
+        with:
+          name: ${{ needs.build.outputs.br_version }}_hw1
+          pattern: hw1*
+      - name: Merge Artifacts HW2
+        uses: actions/upload-artifact/merge@v7
+        with:
+          name: ${{ needs.build.outputs.br_version }}_hw2
+          pattern: hw2*
+      - name: Merge Artifacts DBG
+        uses: actions/upload-artifact/merge@v7
+        with:
+          name: ${{ needs.build.outputs.br_version }}_dbg
+          pattern: dbg*
+      # Not `delete-merged: true`. That deletes through @actions/artifact, which
+      # retries a delete that has in fact already succeeded and then treats the
+      # resulting 404 as fatal - after the merge itself has completed. See
+      # actions/upload-artifact#751, open and unfixed. It is intermittent, and it
+      # fails the job for a cleanup that did not actually fail.
+      #
+      # Deleting here instead keeps the same end state and cannot fail the run:
+      # a 404 means the artifact is already gone, which is the desired outcome.
+      - name: Delete per-target artifacts
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh api --paginate \
+            "repos/$REPO/actions/runs/$RUN_ID/artifacts" \
+            --jq '.artifacts[] | select(.name | test("^(hw1|hw2|dbg)_")) | "\(.id) \(.name)"' \
+          | while read -r id name; do
+              if gh api -X DELETE "repos/$REPO/actions/artifacts/$id" >/dev/null 2>&1; then
+                echo "deleted $name ($id)"
+              else
+                echo "already gone: $name ($id)"
+              fi
+            done
+
+  release:
+    needs: [ build, package ]
+    if: ${{ github.event_name == 'push' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      VER: ${{ needs.build.outputs.br_version }}
+
+    steps:
+      - name: Download firmware
+        uses: actions/download-artifact@v7
+        with:
+          path: dist
+          pattern: '*_hw*'
+      - name: Zip per hardware revision
+        run: |
+          cd dist
+          for d in */; do (cd "$d" && zip -qr "../${d%/}.zip" .); done
+          ls -l *.zip
+      - name: Publish
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            # vYY.MM-beta stays a pre-release, matching upstream's tagging.
+            case "$GITHUB_REF_NAME" in *-beta*|*-rc*) pre=--prerelease ;; *) pre= ;; esac
+            gh release create "$GITHUB_REF_NAME" dist/*.zip $pre \
+              --title "[${GITHUB_REF_NAME#v}] $(date -u +%F)" \
+              --generate-notes
+            gh release delete dev --yes --cleanup-tag 2>/dev/null || true
+          else
+            # One rolling pre-release instead of a tag per commit.
+            gh release delete dev --yes --cleanup-tag 2>/dev/null || true
+            gh release create dev dist/*.zip \
+              --prerelease \
+              --target "$GITHUB_SHA" \
+              --title "Development build $VER" \
+              --notes "Automatic pre-release from \`main\`, replaced on every push."
+          fi

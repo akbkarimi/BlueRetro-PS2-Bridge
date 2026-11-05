@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+
+# Next.js
+.next/
+out/
+.vercel/
+
+# Testing and coverage
+coverage/
+
+# TypeScript
+*.tsbuildinfo
+
+# Logs
+*.log
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+
+# Local IDE files
+.idea/
+*.code-workspace

@@ -1,0 +1,610 @@
+# BlueRetro-PS2-Bridge
+# Canonical BLE protocol contract
+#
+# Baseline: MethyleneX Firmware v6 + WebApp v4.4
+# This describes the existing wire protocol, not future extensions.
+
+schema_version: 1
+
+product:
+  name: BlueRetro-PS2-Bridge
+  version: 1.0.0
+  hardware: ESP32
+  hardware_profile: HW2
+  console_scope: PS2
+
+firmware:
+  framework: ESP-IDF
+  framework_version: "6.1"
+  abi_version: 2
+
+  configuration:
+    hardware_symbol: CONFIG_BLUERETRO_HW2
+    console_symbol: CONFIG_BLUERETRO_SYSTEM_PSX_PS2
+    note: "The inherited PSX_PS2 backend must be narrowed to PS2-only."
+
+bluetooth:
+  device_name_prefix: BlueRetro
+
+  service:
+    uuid: "56830f56-5180-fab0-314b-2fa176799a00"
+
+  characteristics:
+    - index: 1
+      name: global_config
+      uuid: "56830f56-5180-fab0-314b-2fa176799a01"
+      access: read_write
+      length: 4
+      fields: [system_cfg, multitap_cfg, inquiry_mode, banksel]
+
+    - index: 2
+      name: output_config_control
+      uuid: "56830f56-5180-fab0-314b-2fa176799a02"
+      access: write
+      length: 1
+      fields: [output_config_id]
+      field_types:
+        output_config_id: uint8
+      firmware_behavior: "The legacy handler dereferences wr_req->value as uint16_t and reads two bytes, although WebApp sends one byte."
+      webapp_legacy_mismatch: true
+      webapp_write_length: 1
+      firmware_read_width_bytes: 2
+      firmware_correction_required: true
+
+    - index: 3
+      name: output_config_data
+      uuid: "56830f56-5180-fab0-314b-2fa176799a03"
+      access: read_write
+      length: 2
+      fields: [dev_mode, acc_mode]
+      selection_dependency: output_config_control
+
+    - index: 4
+      name: input_config_select
+      uuid: "56830f56-5180-fab0-314b-2fa176799a04"
+      access: write
+      length: 4
+      fields: [input_config_id, offset]
+      field_types:
+        input_config_id: uint16_le
+        offset: uint16_le
+
+    - index: 5
+      name: input_config_data
+      uuid: "56830f56-5180-fab0-314b-2fa176799a05"
+      access: read_write
+      length: variable
+      logical_length:
+        formula: "3 + map_size * 8"
+        header_bytes: 3
+        mapping_entry_bytes: 8
+        max_mapping_entries: 128
+        logical_max_bytes: 1027
+        note: "Logical structure maximum; not a guarantee that the legacy firmware can transfer the entire structure within its 512-byte buffer limit."
+      selection_dependency: input_config_select
+      read:
+        operation: read_blob
+        base_offset: input_config_offset
+        response_limit: "min(mtu - 1, 512 - blob_offset, remaining_config_bytes)"
+        firmware_buffer_limit: 512
+      write:
+        operation: write_request
+        data_offset: input_config_offset
+        firmware_bounds_validation: missing
+        correction_required: true
+      prepare_write:
+        supported: true
+        data_offset: "input_config_offset + prepare_write_offset"
+        firmware_bounds_validation: missing
+        correction_required: true
+
+    - index: 6
+      name: abi_version
+      uuid: "56830f56-5180-fab0-314b-2fa176799a06"
+      access: read
+      length: 1
+      field_types:
+        abi_version: uint8
+      deprecated: true
+      replacement: command_channel_get_abi_version
+
+    - index: 7
+      name: command_channel
+      uuid: "56830f56-5180-fab0-314b-2fa176799a07"
+      access: read_write
+      length: variable
+      transaction:
+        write: command_id_and_optional_payload
+        read: response_for_last_command
+        response_characteristic: same_characteristic
+        acknowledgement: att_write_response
+      read_response:
+        length: command_dependent
+        commands:
+          get_abi_version: 1
+          get_firmware_version: 23
+          get_bluetooth_address: 6
+          get_game_id: "0..23"
+          get_config_source: 1
+          get_file: "0..23"
+          get_firmware_name: 23
+          audio_settings: 10
+      write_request:
+        minimum_length: 1
+        maximum_length: "mtu - 3"
+        command_id_encoding: uint8
+      ota_lifecycle_commands:
+        start: 0xA5
+        end: 0x5A
+        abort: 0xDE
+      firmware_legacy:
+        command_payload_validation: command_dependent
+
+    - index: 8
+      name: ota_data
+      uuid: "56830f56-5180-fab0-314b-2fa176799a08"
+      access: write
+      length: variable
+      payload: raw_firmware_image_chunk
+      max_write_payload_formula: "mtu - 3"
+      prepare_write:
+        supported_by_legacy_handler: true
+        max_payload_formula: "mtu - 5"
+        writes_applied_immediately: true
+        cancel_rolls_back_data: false
+        correction_required: true
+      firmware_legacy:
+        ota_handle_validation: missing
+        ota_write_result_validation: missing
+        correction_required: true
+
+    - index: 9
+      name: firmware_version
+      uuid: "56830f56-5180-fab0-314b-2fa176799a09"
+      access: read
+      length: 23
+      encoding: utf8
+      source: esp_app_desc.version
+      null_terminator_transmitted: false
+
+    - index: 10
+      name: memory_card_control
+      uuid: "56830f56-5180-fab0-314b-2fa176799a0a"
+      access: write
+      length: 4
+      fields: [offset]
+      field_types:
+        offset: uint32
+      encoding: uint32_little_endian
+      offset_range:
+        min: 0
+        max_exclusive: 131072
+      firmware_legacy:
+        length_validation: missing
+        offset_bounds_validation: missing
+        correction_required: true
+
+    - index: 11
+      name: memory_card_data
+      uuid: "56830f56-5180-fab0-314b-2fa176799a0b"
+      access: read_write
+      length: variable
+      memory:
+        total_size_bytes: 131072
+        block_size_bytes: 4096
+        offset_source: memory_card_control
+        offset_auto_increment: true
+        host_must_prevent_block_crossing: true
+        firmware_enforces_block_boundary_on_write: false
+      read:
+        initial_operation: read_request
+        continuation_operation: read_blob
+        offset_source: firmware_internal_memory_card_offset
+        blob_att_offset_used: false
+        max_chunk_formula: "min(mtu - 2, bytes_to_next_4096_byte_boundary)"
+        alignment_behavior: "When the MTU limit is applied, firmware rounds the chunk length down to a multiple of 4; when the block-boundary limit is smaller, it does not apply this alignment."
+        firmware_increments_offset: true
+      write:
+        operation: write_request
+        max_payload_formula: "mtu - 3"
+        offset_source: firmware_internal_memory_card_offset
+        firmware_increments_offset: true
+        host_must_limit_payload_to_remaining_block_bytes: true
+        firmware_bounds_validation: missing
+        firmware_block_boundary_validation: missing
+        correction_required: true
+      prepare_write:
+        supported_by_legacy_handler: true
+        max_payload_formula: "mtu - 5"
+        offset_field_used: false
+        writes_applied_immediately: true
+        firmware_increments_offset: true
+        cancel_rolls_back_data: false
+        correction_required: true
+      firmware_legacy:
+        mc_read_write_bounds_validation: missing
+        mc_write_assumes_no_block_crossing: true
+        invalid_offset_can_access_out_of_range_memory: true
+
+    - index: 12
+      name: bluetooth_address
+      uuid: "56830f56-5180-fab0-314b-2fa176799a0c"
+      access: read
+      length: 6
+      encoding: raw_bytes
+      source: bt_addr_le_t.a.val
+      byte_order:
+        firmware_wire_order: native_array_order
+        webapp_display_order: reversed
+
+    - index: 13
+      name: mx_config_slot_select
+      uuid: "56830f56-5180-fab0-314b-2fa176799a0d"
+      access: write
+      length: 1
+
+    - index: 14
+      name: mx_config_data
+      uuid: "56830f56-5180-fab0-314b-2fa176799a0e"
+      access: read_write
+      length: variable
+
+  commands:
+    get_abi_version: 0x01
+    get_firmware_version: 0x02
+    get_bluetooth_address: 0x03
+    get_game_id: 0x04
+    get_config_source: 0x05
+    get_file: 0x06
+    get_firmware_name: 0x07
+    set_default_config: 0x10
+    set_game_id_config: 0x11
+    open_directory: 0x12
+    close_directory: 0x13
+    delete_file: 0x14
+    audio_preview: 0x15
+    audio_preview_stop: 0x16
+    audio_settings: 0x17
+    system_deep_sleep: 0x37
+    system_reset: 0x38
+    system_factory_reset: 0x39
+    ota_end: 0x5A
+    ota_start: 0xA5
+    ota_abort: 0xDE
+
+
+command_channel:
+  characteristic_index: 7
+
+  transaction:
+    read_operation: "Write command ID to characteristic 7, then read characteristic 7."
+    write_operation: "Write command ID followed by command payload."
+    response: "ATT response; command-specific read data is returned on characteristic read."
+
+  read_responses:
+    get_abi_version:
+      command: 0x01
+      length: 1
+      fields: [abi_version]
+
+    get_firmware_version:
+      command: 0x02
+      length: 23
+      encoding: utf8
+      source: esp_app_desc.version
+
+    get_bluetooth_address:
+      command: 0x03
+      length: 6
+      source: local_ble_address
+
+    get_game_id:
+      command: 0x04
+      length: variable
+      max_length: 23
+      encoding: utf8
+
+    get_config_source:
+      command: 0x05
+      length: 1
+      fields: [config_source]
+
+    get_file:
+      command: 0x06
+      length: variable
+      max_length: 23
+      encoding: utf8
+      prerequisite: open_directory
+      legacy_firmware:
+        prerequisite_enforced: false
+        readdir_null_checked_before_name_copy: false
+        null_entry_dereference_possible: true
+        filename_truncated_to_23_bytes: true
+        correction_required: true
+
+    get_firmware_name:
+      command: 0x07
+      length: 23
+      encoding: utf8
+      source: esp_app_desc.project_name
+
+    audio_settings:
+      command: 0x17
+      length: 10
+      fields: [enabled, volume, sound]
+      sound_count: 8
+
+  write_requests:
+    audio_preview:
+      command: 0x15
+      expected_length: 2
+      fields: [command_id, melody_id]
+      melody_id_range: [0, 26]
+      firmware_validates_length: true
+
+    audio_preview_stop:
+      command: 0x16
+      expected_length: 1
+      firmware_validates_length: true
+
+    audio_settings:
+      command: 0x17
+      expected_length: 11
+      fields: [command_id, enabled, volume, sound]
+      sound_count: 8
+      legacy_firmware:
+        length_condition_accepts: [1, 10]
+        length_1_behavior: rejected_unlikely
+        length_10_behavior: accepted_but_reads_out_of_bounds
+        actual_bytes_read_at_length_10: 11
+        correct_length_11_behavior: rejected_invalid_attribute_length
+        status: buffer_overread_and_valid_length_rejected
+        correction_required: true
+
+    set_default_config:
+      command: 0x10
+      nominal_length: 1
+      firmware_validates_length: false
+
+    set_game_id_config:
+      command: 0x11
+      nominal_length: 1
+      firmware_validates_length: false
+
+    open_directory:
+      command: 0x12
+      nominal_length: 1
+      firmware_validates_length: false
+      legacy_firmware:
+        closes_existing_directory_handle_before_open: true
+        assigns_new_opendir_result: true
+        existing_dangling_handle_can_be_closed_again: true
+
+    close_directory:
+      command: 0x13
+      nominal_length: 1
+      firmware_validates_length: false
+      legacy_firmware:
+        closes_handle_when_non_null: true
+        clears_directory_pointer_after_close: false
+        subsequent_get_file_may_use_closed_handle: true
+        subsequent_open_may_close_handle_again: true
+        correction_required: true
+
+    delete_file:
+      command: 0x14
+      request:
+        fields: [command_id, filename]
+        encoding: utf8
+        min_filename_bytes: 0
+        firmware_enforces_min_filename_length: false
+        buffer_safe_max_filename_bytes: 27
+        firmware_enforces_max_filename_length: false
+        min_total_length: 2
+        max_total_length: 28
+        path_scope: "/fs/"
+        filename_only: true
+        reject_path_separators: false
+        firmware_path_traversal_validation: missing
+        buffer_overflow_possible_when_total_length_exceeds: 28
+        reject_dot_segments: true
+      firmware_legacy:
+        buffer_size: 32
+        path_prefix_bytes: 4
+        length_validation: missing
+        path_validation: missing
+        correction_required: true
+      response: att_write_response
+
+    system_deep_sleep:
+      command: 0x37
+      nominal_length: 1
+      firmware_validates_length: false
+
+    system_reset:
+      command: 0x38
+      nominal_length: 1
+      firmware_validates_length: false
+
+    system_factory_reset:
+      command: 0x39
+      nominal_length: 1
+      firmware_validates_length: false
+
+    ota_start:
+      command: 0xA5
+      nominal_length: 1
+      firmware_validates_length: false
+
+    ota_end:
+      command: 0x5A
+      nominal_length: 1
+      firmware_validates_length: false
+
+    ota_abort:
+      command: 0xDE
+      nominal_length: 1
+      firmware_validates_length: false
+
+  legacy_aliases:
+    - {id: 0x52, name: audio_preview, expected_length: 2}
+    - {id: 0x53, name: audio_preview_stop, expected_length: 1}
+
+  ota:
+    data_characteristic_index: 8
+    data_transfer: "Firmware image chunks are written to characteristic 8."
+    chunk_acknowledgement: att_write_response
+    command_ids:
+      start: 0xA5
+      end: 0x5A
+      abort: 0xDE
+    legacy_firmware:
+      command_length_validation: false
+      start:
+        operation: esp_ota_begin
+        failure_behavior: logs_error_then_sends_att_write_response
+        failure_cleanup: calls_esp_ota_abort_then_clears_handle
+      data:
+        operation: esp_ota_write
+        ota_handle_validation: missing
+        return_value_validation: missing
+        write_response_sent_even_on_write_failure: true
+      prepare_write:
+        writes_data_immediately: true
+        ota_write_result_validation: missing
+        cancel_rolls_back_written_data: false
+      end:
+        operation_order:
+          - esp_ota_end
+          - esp_ota_set_boot_partition
+          - adapter_restart_on_success
+        failure_behavior: logs_error_then_sends_att_write_response
+        handle_cleared_only_after_boot_partition_selection_succeeds: true
+      abort:
+        aborts_only_when_handle_is_nonzero: true
+        always_sends_att_write_response: true
+      execute_write:
+        ota_data_is_not_committed_transactionally: true
+        config_update_only_when_ota_handle_is_zero_and_flag_is_execute: true
+
+mx_configuration:
+  slots:
+    audio:
+      id: 0
+      length: 8
+      fields:
+        - enabled
+        - volume
+        - power_on_melody
+        - power_off_melody
+        - reset_melody
+        - bluetooth_connect_melody
+        - bluetooth_disconnect_melody
+        - reserved
+      melody_count: 27
+
+    oled:
+      id: 1
+      length: "6 + page_count"
+      fields:
+        - enabled
+        - rotation
+        - panel_height
+        - notifications
+        - touchpad_navigation
+        - page_count
+        - pages
+      max_pages: 8
+
+    led:
+      id: 2
+      length: 26
+      fields:
+        - automatic_player_color
+        - brightness
+        - port_rgb_colors
+      brightness:
+        type: uint8
+        min: 0
+        max: 100
+        unit: percent
+        firmware_validation: "Values greater than 100 are rejected."
+        webapp_legacy_mismatch:
+          max: 255
+          correction_required: true
+      stored_port_count: 8
+
+    idle:
+      id: 3
+      length: 3
+      fields:
+        - mode
+        - timeout_seconds
+      timeout_encoding: uint16_little_endian
+
+    time:
+      id: 4
+      length: 6
+      fields:
+        - year
+        - month
+        - day
+        - hour
+        - minute
+      year_encoding: uint16_little_endian
+
+    pages:
+      id: 5
+      supported: false
+      note: "Firmware rejects selection of this slot; no BLE read/write support." 
+
+    features:
+      id: 6
+      length: 1
+      fields: [feature_bits]
+
+    keys:
+      id: 7
+      length: 2
+      fields:
+        - screensaver_combo
+        - menu_combo
+
+  shortcut_combos:
+    - id: 0
+      name: home_up
+    - id: 1
+      name: home_down
+    - id: 2
+      name: home_left
+    - id: 3
+      name: home_right
+    - id: 4
+      name: share_cross
+    - id: 5
+      name: l1_r1
+    - id: 6
+      name: l2_r2
+    - id: 7
+      name: l3_r3
+
+  screensaver_modes:
+    - {id: 0, name: off}
+    - {id: 1, name: cube}
+    - {id: 2, name: stars}
+    - {id: 3, name: tetris}
+    - {id: 4, name: ps_symbols_float}
+    - {id: 5, name: balls}
+    - {id: 6, name: pong}
+    - {id: 7, name: analog_clock}
+    - {id: 8, name: flip_clock}
+    - {id: 9, name: rectangular_clock}
+    - {id: 10, name: playstation_logo}
+    - {id: 11, name: playstation_wordmark}
+
+  oled_pages:
+    - {id: 0, name: status}
+    - {id: 1, name: controllers}
+    - {id: 2, name: battery}
+    - {id: 3, name: led_color}
+    - {id: 4, name: clock}
