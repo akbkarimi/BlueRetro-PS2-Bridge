@@ -7,6 +7,8 @@
 #define _ADAPTER_H_
 
 #include <stdio.h>
+#include <stdbool.h>
+#include <stdint.h>
 #include <esp_attr.h>
 #include "zephyr/atomic.h"
 #include "tests/cmds.h"
@@ -587,6 +589,8 @@ uint32_t axis_to_btn_id(uint8_t axis);
 int8_t btn_sign(uint32_t polarity, uint8_t btn_id);
 void adapter_init_buffer(uint8_t wired_id);
 void adapter_bridge(struct bt_data *bt_data);
+/* 17-byte BLE monitor snapshot: buttons u32 LE, six signed axes i16 LE, valid u8. */
+bool adapter_get_controller_state(uint8_t port, uint8_t *dst, uint32_t max);
 void adapter_fb_stop_timer_start(uint8_t dev_id, uint64_t dur_us);
 void adapter_fb_stop_timer_stop(uint8_t dev_id);
 bool adapter_bridge_fb(struct raw_fb *fb_data, struct bt_data *bt_data);

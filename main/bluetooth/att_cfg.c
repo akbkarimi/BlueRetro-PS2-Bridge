@@ -15,6 +15,7 @@
 #include "zephyr/att.h"
 #include "zephyr/gatt.h"
 #include "adapter/config.h"
+#include "adapter/adapter.h"
 #include "adapter/memory_card.h"
 #include "adapter/gameid.h"
 #include "system/manager.h"
@@ -41,6 +42,7 @@
 #define CFG_CMD_AUDIO_PREVIEW 0x15
 #define CFG_CMD_AUDIO_PREVIEW_STOP 0x16
 #define CFG_CMD_AUDIO_SETTINGS 0x17
+#define CFG_CMD_GET_CONTROLLER_STATE 0x18
 #define CFG_CMD_SYS_DEEP_SLEEP 0x37
 #define CFG_CMD_SYS_RESET 0x38
 #define CFG_CMD_SYS_FACTORY 0x39
@@ -102,6 +104,7 @@ static uint16_t in_cfg_offset = 0;
 static uint16_t in_cfg_id = 0;
 static uint32_t mc_offset = 0;
 static uint8_t cfg_cmd = 0;
+static uint8_t cfg_cmd_port = 0;
 
 /* MX Config BLE state */
 static uint8_t mx_cfg_selected_slot = MX_SLOT_AUDIO;
@@ -492,6 +495,14 @@ static void bt_att_cmd_read_group_rsp(uint16_t handle, uint16_t start, uint16_t 
     bt_att_cmd(handle, BT_ATT_OP_READ_GROUP_RSP, len);
 }
 
+static void bt_att_cfg_cmd_controller_state_rsp(uint16_t handle) {
+    uint8_t state[17] = {0};
+
+    (void)adapter_get_controller_state(cfg_cmd_port, state, sizeof(state));
+    memcpy(bt_hci_pkt_tmp.att_data, state, sizeof(state));
+    bt_att_cmd(handle, BT_ATT_OP_READ_RSP, sizeof(state));
+}
+
 static void bt_att_cfg_cmd_rd_hdlr(uint16_t handle, uint16_t attr_handle) {
     switch (cfg_cmd) {
         case CFG_CMD_GET_ABI_VER:
@@ -517,6 +528,9 @@ static void bt_att_cfg_cmd_rd_hdlr(uint16_t handle, uint16_t attr_handle) {
             break;
         case CFG_CMD_GET_HW_ID:
             bt_att_cfg_cmd_hw_id_rsp(handle);
+            break;
+        case CFG_CMD_GET_CONTROLLER_STATE:
+            bt_att_cfg_cmd_controller_state_rsp(handle);
             break;
         case CFG_CMD_AUDIO_SETTINGS: {
             ui_audio_settings_t a;
@@ -548,6 +562,17 @@ static void bt_att_cfg_cmd_wr_hdlr(struct bt_dev *device, uint8_t *data, uint32_
     cfg_cmd = data[0];
 
     switch (cfg_cmd) {
+        case CFG_CMD_GET_CONTROLLER_STATE:
+            if (len != 2 || data[1] >= WIRED_MAX_DEV) {
+                bt_att_cmd_error_rsp(device->acl_handle, BT_ATT_OP_WRITE_REQ,
+                    BR_CFG_CMD_CHRC_HDL, BT_ATT_ERR_INVALID_ATTRIBUTE_LEN);
+            }
+            else {
+                cfg_cmd_port = data[1];
+                bt_att_cmd_wr_rsp(device->acl_handle);
+            }
+            return;
+
         case CFG_CMD_AUDIO_PREVIEW:
             if (len != 2) {
                 bt_att_cmd_error_rsp(device->acl_handle, BT_ATT_OP_WRITE_REQ, BR_CFG_CMD_CHRC_HDL, BT_ATT_ERR_INVALID_ATTRIBUTE_LEN);

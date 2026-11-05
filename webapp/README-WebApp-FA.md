@@ -54,8 +54,8 @@ npm run dev        # → http://localhost:3000
 | a01 | global_cfg — ۴ بایت: system, multitap, inquiry, banksel |
 | a02 / a03 | انتخاب پورت / dev_mode و acc_mode |
 | a06 / a09 / a0c | نسخه API / نسخه فریمور / BDAddr |
-| a07 | کامندها: `0x15` پیش‌نمایش ملودی (0..26)، `0x16` توقف، `0x37` خواب عمیق، `0x38` ریست ESP، `0x39` بازیابی کارخانه |
-| a0d + a0e | اسلات‌های MX — انتخاب اسلات سپس خواندن/نوشتن blob: AUDIO(0) · OLED(1) · LED(2) · IDLE(3) · TIME(4) · FEATURES(6) |
+| a07 | کامندها: `0x15` پیش‌نمایش ملودی، `0x16` توقف، `0x17` تنظیمات صدا، `0x18` خواندن وضعیت دسته، `0x37` خواب عمیق، `0x38` ریست ESP، `0x39` بازیابی کارخانه |
+| a0d + a0e | اسلات‌های MX — انتخاب اسلات سپس خواندن/نوشتن blob: AUDIO(0) · OLED(1) · LED(2) · IDLE(3) · TIME(4) · FEATURES(6) · KEYS(7) · MAC(8) |
 
 ### ساختار blob اسلات‌ها (mx_config.h)
 
@@ -66,6 +66,8 @@ LED     (26B)  {auto_player, brightness, ports[8]{r,g,b}}
 IDLE     (3B)  {mode(0..11), idle_timeout:u16le}
 TIME     (6B)  {year:u16le, month, day, hour, minute}
 FEATURES (1B)
+KEYS     (2B)  {screensaver_combo, menu_combo}
+MAC      (8B)  {magic=0x4D, enabled, bluetooth_address[6]} — اعمال پس از راه‌اندازی مجدد
 ```
 
 ملودی‌ها ۰ تا ۲۶ — همان ترتیب جدول `melodies[]` در `ui.c`:
@@ -84,8 +86,10 @@ src/lib/br/
 src/components/br/
   BrApp.tsx      پوسته + صفحه اتصال (با تشخیص پشتیبانی Web Bluetooth)
   OledPreview.tsx پیش‌نمایش شماتیک OLED
-  pages/         Home · Display · Sound · Colors · Ports · Shortcuts · Advance · System · Reference · Debug · Help
+  pages/         Home · Display · Sound · Colors · Ports · Controller Test · MAC Spoof · Shortcuts · Advance · System · Reference · Debug · Help
 ```
 
+- صفحه Controller Test: پایش زنده دکمه‌ها، استیک‌ها و تریگرها از طریق فرمان `0x18` (پاسخ ۱۷ بایتی).
+- صفحه MAC Spoof: ذخیره آدرس BR/EDR در اسلات MAC؛ اعمال آدرس هنگام بوت و نیازمند خاموش/روشن‌کردن آداپتور.
 - صفحه Debug: لاگ زنده ترافیک GATT (hex dump) برای مقابله با فیرم‌ور.
 - شناسه دیباگ: در حالت dev، استور روی `window.__br` در دسترس است.

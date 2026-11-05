@@ -53,6 +53,8 @@ const dict = {
   colors: { en: 'Controller LED Colors', fa: 'رنگ LED دسته‌ها' },
   shortcuts: { en: 'Shortcuts', fa: 'میانبرها' },
   ports: { en: 'Ports', fa: 'پورت‌ها' },
+  controllerTest: { en: 'Controller Test', fa: 'تست دسته بازی' },
+  macSpoof: { en: 'MAC Address Spoof', fa: 'جعل آدرس MAC' },
   advance: { en: 'Advance Config', fa: 'تنظیمات پیشرفته' },
   system: { en: 'System Manager', fa: 'مدیریت سیستم' },
   reference: { en: 'Pinout & Sheets', fa: 'پین‌اوت و شیت‌ها' },
@@ -363,6 +365,55 @@ const dict = {
   read: { en: 'read', fa: 'خواندن' },
   write: { en: 'write', fa: 'نوشتن' },
   events: { en: 'events', fa: 'رویدادها' },
+
+  // controller input monitor
+  controllerTestDesc: {
+    en: 'Live view of controller buttons, sticks and analog triggers received by the firmware',
+    fa: 'نمایش زنده دکمه‌ها، آنالوگ‌ها و تریگرهایی که فریمور از دسته دریافت می‌کند',
+  },
+  controllerMonitor: { en: 'Monitor input', fa: 'پایش ورودی دسته' },
+  controllerMonitoring: { en: 'Monitoring active', fa: 'پایش فعال است' },
+  controllerInactive: { en: 'Monitoring stopped', fa: 'پایش متوقف است' },
+  controllerExperimental: { en: 'Experimental firmware feature', fa: 'قابلیت آزمایشی فریمور' },
+  controllerExperimentalDesc: {
+    en: 'This page reads a compact controller snapshot over BLE. It does not inject input or change controller mappings.',
+    fa: 'این صفحه وضعیت لحظه‌ای دسته را از طریق BLE می‌خواند؛ ورودی تزریق نمی‌کند و نگاشت دکمه‌ها را تغییر نمی‌دهد.',
+  },
+  controllerRaw: { en: 'Raw button mask', fa: 'ماسک خام دکمه‌ها' },
+  controllerTriggers: { en: 'Analog triggers', fa: 'تریگرهای آنالوگ' },
+  controllerPressed: { en: 'pressed', fa: 'فشرده' },
+  controllerWaiting: { en: 'Waiting for controller input…', fa: 'در انتظار دریافت ورودی از دسته…' },
+  controllerReceived: { en: 'Controller input received', fa: 'ورودی دسته دریافت می‌شود' },
+  controllerStateUnsupported: {
+    en: 'This firmware does not expose controller monitoring yet. Build and flash the updated firmware, then reconnect.',
+    fa: 'فریمور فعلی هنوز پایش دسته را ارائه نمی‌کند. فریمور به‌روزشده را بسازید و فلش کنید، سپس دوباره متصل شوید.',
+  },
+
+  // MAC spoofing
+  macSpoofDesc: {
+    en: 'Set a custom Bluetooth BR/EDR address for compatibility with devices such as PlayStation 3. The change is applied after reboot.',
+    fa: 'تنظیم آدرس سفارشی Bluetooth BR/EDR برای سازگاری با دستگاه‌هایی مانند PlayStation 3؛ تغییر پس از راه‌اندازی مجدد اعمال می‌شود.',
+  },
+  macSpoofEnable: { en: 'Enable MAC spoofing', fa: 'فعال‌سازی جعل MAC' },
+  macSpoofAddress: { en: 'Spoofed Bluetooth address', fa: 'آدرس بلوتوث جایگزین' },
+  macSpoofPresets: { en: 'Presets', fa: 'مقادیر آماده' },
+  macSpoofUseCurrent: { en: 'Use current address', fa: 'استفاده از آدرس فعلی' },
+  macSpoofValid: { en: 'Valid unicast address', fa: 'آدرس Unicast معتبر' },
+  macSpoofMulticast: { en: 'Multicast addresses cannot be used as a Bluetooth device address.', fa: 'آدرس‌های Multicast را نمی‌توان به‌عنوان آدرس دستگاه بلوتوث استفاده کرد.' },
+  macSpoofEmpty: { en: 'Empty address', fa: 'آدرس خالی' },
+  macSpoofInvalid: { en: 'Enter six hexadecimal bytes', fa: 'شش بایت هگزادسیمال وارد کنید' },
+  macSpoofUnrepresentable: { en: 'This address cannot be mapped to a valid ESP32 base MAC. Choose another unicast address.', fa: 'این آدرس به یک Base MAC معتبر برای ESP32 تبدیل نمی‌شود؛ یک آدرس Unicast دیگر انتخاب کنید.' },
+  macSpoofReboot: {
+    en: 'After saving, wait at least 2 seconds, then power-cycle the adapter. The Bluetooth controller address is selected during firmware startup.',
+    fa: 'پس از ذخیره، دست‌کم ۲ ثانیه صبر کنید و سپس آداپتور را خاموش و روشن کنید. آدرس کنترلر بلوتوث هنگام راه‌اندازی فریمور انتخاب می‌شود.',
+  },
+  macSpoofSaved: { en: 'MAC spoof settings saved', fa: 'تنظیمات جعل MAC ذخیره شد' },
+  macSpoofUnsupported: {
+    en: 'This firmware does not support the MAC configuration slot. Build and flash the updated firmware, then reconnect.',
+    fa: 'فریمور فعلی اسلات تنظیم MAC را پشتیبانی نمی‌کند. فریمور به‌روزشده را بسازید و فلش کنید، سپس دوباره متصل شوید.',
+  },
+  macSpoofCurrent: { en: 'Current Bluetooth address', fa: 'آدرس فعلی بلوتوث' },
+  macSpoofConfigured: { en: 'Configured address', fa: 'آدرس تنظیم‌شده' },
 
   // misc
   save: { en: 'Save', fa: 'ذخیره' },

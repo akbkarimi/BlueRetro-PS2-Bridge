@@ -1,8 +1,8 @@
 # BlueRetro-PS2-Bridge
 # Canonical BLE protocol contract
 #
-# Baseline: MethyleneX Firmware v6 + WebApp v4.4
-# This describes the existing wire protocol, not future extensions.
+# Baseline: BlueRetro PS2 Bridge firmware + WebApp v4.4 integration
+# Includes the controller-monitor command and MAC configuration slot.
 
 schema_version: 1
 
@@ -129,6 +129,7 @@ bluetooth:
           get_file: "0..23"
           get_firmware_name: 23
           audio_settings: 10
+          get_controller_state: 17
       write_request:
         minimum_length: 1
         maximum_length: "mtu - 3"
@@ -265,6 +266,7 @@ bluetooth:
     audio_preview: 0x15
     audio_preview_stop: 0x16
     audio_settings: 0x17
+    get_controller_state: 0x18
     system_deep_sleep: 0x37
     system_reset: 0x38
     system_factory_reset: 0x39
@@ -334,7 +336,23 @@ command_channel:
       fields: [enabled, volume, sound]
       sound_count: 8
 
+    get_controller_state:
+      command: 0x18
+      request_fields: [command_id, output_port]
+      request_length: 2
+      output_port_range: [0, 11]
+      response_length: 17
+      response_fields: [buttons_u32_le, lx_i16_le, ly_i16_le, rx_i16_le, ry_i16_le, l2_i16_le, r2_i16_le, valid_u8]
+      stale_after_ms: 750
+      unsupported_firmware_response: abi_version_fallback
+
   write_requests:
+    get_controller_state:
+      command: 0x18
+      expected_length: 2
+      fields: [command_id, output_port]
+      response_read_required: true
+
     audio_preview:
       command: 0x15
       expected_length: 2
@@ -569,6 +587,21 @@ mx_configuration:
       fields:
         - screensaver_combo
         - menu_combo
+
+    mac:
+      id: 8
+      length: 8
+      fields: [magic, enabled, bluetooth_br_edr_address]
+      magic: 0x4D
+      address_order: display_msb_first
+      validation:
+        enabled_address_must_be_nonzero: true
+        multicast_addresses_rejected: true
+        derived_base_mac_must_be_nonzero_unicast: true
+        address_underflow_rejected: true
+      application: "ESP32 base MAC is set before Bluetooth controller initialization; Bluetooth address is derived as base MAC + 2."
+      requires_reboot: true
+      persistence: NVS
 
   shortcut_combos:
     - id: 0

@@ -18,9 +18,39 @@ static struct mx_idle_cfg idle_cfg;
 static struct mx_time_cfg time_cfg;
 static struct mx_features_cfg features_cfg;
 static struct mx_keys_cfg keys_cfg;
+static struct mx_mac_cfg mac_cfg;
 
 static uint8_t selected_slot = MX_SLOT_AUDIO;
 static uint32_t led_generation = 1;     /* Bumped on every LED slot change */
+
+static bool mx_mac_address_valid_for_bt(const uint8_t mac[6])
+{
+    uint8_t base[6];
+    uint64_t address = 0;
+    uint8_t any = 0;
+
+    if (!mac || (mac[0] & 1U)) {
+        return false;
+    }
+
+    for (uint32_t i = 0; i < 6; i++) {
+        address = (address << 8) | mac[i];
+    }
+
+    /* The Bluetooth address is base MAC + 2; reject underflow explicitly. */
+    if (address < 2) {
+        return false;
+    }
+    address -= 2;
+
+    for (int32_t i = 5; i >= 0; i--) {
+        base[i] = (uint8_t)(address & 0xFFU);
+        address >>= 8;
+        any |= base[i];
+    }
+
+    return any != 0 && (base[0] & 1U) == 0;
+}
 
 static void mx_config_defaults(void)
 {
@@ -76,6 +106,9 @@ static void mx_config_defaults(void)
     time_cfg.minute = 0;
 
     features_cfg.bits = 0x7F;
+
+    memset(&mac_cfg, 0, sizeof(mac_cfg));
+    mac_cfg.magic = 0x4D;
 }
 
 /* Keep every event melody inside the 27-melody table */
@@ -135,12 +168,12 @@ static bool mx_nvs_save(const char *key, const void *src, size_t len)
    Bluetooth task (unicore build -> BT timing violations -> random
    controller disconnects). Slots are marked dirty and committed later
    from the manager task via mx_config_flush(). */
-static uint8_t mx_dirty_slots = 0;
+static uint16_t mx_dirty_slots = 0;
 static int64_t mx_save_req_ms = 0;
 
 static void mx_config_request_save(uint8_t slot) {
-    if (slot < 8) {
-        mx_dirty_slots |= (uint8_t)(1U << slot);
+    if (slot < MX_SLOT_LAST) {
+        mx_dirty_slots |= (uint16_t)(1U << slot);
         mx_save_req_ms = esp_timer_get_time() / 1000;
     }
 }
@@ -158,32 +191,37 @@ void mx_config_flush(void) {
 
     if (mx_dirty_slots & (1U << MX_SLOT_AUDIO)) {
         if (mx_nvs_save("audio", &audio_cfg, sizeof(audio_cfg))) {
-            mx_dirty_slots &= (uint8_t)~(1U << MX_SLOT_AUDIO);
+            mx_dirty_slots &= (uint16_t)~(1U << MX_SLOT_AUDIO);
         }
     }
     if (mx_dirty_slots & (1U << MX_SLOT_OLED)) {
         if (mx_nvs_save("oled", &oled_cfg, sizeof(oled_cfg))) {
-            mx_dirty_slots &= (uint8_t)~(1U << MX_SLOT_OLED);
+            mx_dirty_slots &= (uint16_t)~(1U << MX_SLOT_OLED);
         }
     }
     if (mx_dirty_slots & (1U << MX_SLOT_LED)) {
         if (mx_nvs_save("led", &led_cfg, sizeof(led_cfg))) {
-            mx_dirty_slots &= (uint8_t)~(1U << MX_SLOT_LED);
+            mx_dirty_slots &= (uint16_t)~(1U << MX_SLOT_LED);
         }
     }
     if (mx_dirty_slots & (1U << MX_SLOT_IDLE)) {
         if (mx_nvs_save("idle", &idle_cfg, sizeof(idle_cfg))) {
-            mx_dirty_slots &= (uint8_t)~(1U << MX_SLOT_IDLE);
+            mx_dirty_slots &= (uint16_t)~(1U << MX_SLOT_IDLE);
         }
     }
     if (mx_dirty_slots & (1U << MX_SLOT_FEATURES)) {
         if (mx_nvs_save("feat", &features_cfg, sizeof(features_cfg))) {
-            mx_dirty_slots &= (uint8_t)~(1U << MX_SLOT_FEATURES);
+            mx_dirty_slots &= (uint16_t)~(1U << MX_SLOT_FEATURES);
         }
     }
     if (mx_dirty_slots & (1U << MX_SLOT_KEYS)) {
         if (mx_nvs_save("keys", &keys_cfg, sizeof(keys_cfg))) {
-            mx_dirty_slots &= (uint8_t)~(1U << MX_SLOT_KEYS);
+            mx_dirty_slots &= (uint16_t)~(1U << MX_SLOT_KEYS);
+        }
+    }
+    if (mx_dirty_slots & (1U << MX_SLOT_MAC)) {
+        if (mx_nvs_save("mac", &mac_cfg, sizeof(mac_cfg))) {
+            mx_dirty_slots &= (uint16_t)~(1U << MX_SLOT_MAC);
         }
     }
 }
@@ -260,6 +298,15 @@ static void mx_config_load_all(void)
         k.saver_combo < MX_KEYS_COMBO_COUNT && k.menu_combo < MX_KEYS_COMBO_COUNT) {
         keys_cfg = k;
     }
+
+    struct mx_mac_cfg m;
+    if (mx_nvs_load("mac", &m, sizeof(m)) && m.magic == 0x4D && m.enabled <= 1) {
+        uint8_t any = 0;
+        for (uint32_t i = 0; i < sizeof(m.mac); i++) any |= m.mac[i];
+        if (!m.enabled || (any != 0 && mx_mac_address_valid_for_bt(m.mac))) {
+            mac_cfg = m;
+        }
+    }
 }
 
 void mx_config_init(void)
@@ -315,6 +362,11 @@ uint32_t mx_config_read_blob(uint8_t *dst, uint32_t max)
     case MX_SLOT_KEYS:
         src = &keys_cfg;
         len = sizeof(keys_cfg);
+        break;
+
+    case MX_SLOT_MAC:
+        src = &mac_cfg;
+        len = sizeof(mac_cfg);
         break;
 
     default:
@@ -472,6 +524,27 @@ int32_t mx_config_write_blob(const uint8_t *src, uint32_t len)
         return 0;
     }
 
+    case MX_SLOT_MAC: {
+        struct mx_mac_cfg tmp;
+        uint8_t any = 0;
+
+        if (len != sizeof(tmp)) {
+            return -1;
+        }
+
+        memcpy(&tmp, src, sizeof(tmp));
+        for (uint32_t i = 0; i < sizeof(tmp.mac); i++) any |= tmp.mac[i];
+
+        if (tmp.magic != 0x4D || tmp.enabled > 1 ||
+            (tmp.enabled && (any == 0 || !mx_mac_address_valid_for_bt(tmp.mac)))) {
+            return -1;
+        }
+
+        mx_config_request_save(MX_SLOT_MAC);
+        mac_cfg = tmp;
+        return 0;
+    }
+
     case MX_SLOT_PAGES:
     default:
         return -1;
@@ -511,6 +584,11 @@ const struct mx_features_cfg *mx_cfg_features(void)
 const struct mx_keys_cfg *mx_cfg_keys(void)
 {
     return &keys_cfg;
+}
+
+const struct mx_mac_cfg *mx_cfg_mac(void)
+{
+    return &mac_cfg;
 }
 
 void mx_cfg_set_time(const struct mx_time_cfg *t)

@@ -4,15 +4,13 @@
  * GATT OTA data channel: a08
  */
 import { CH, CMD } from './constants'
-import type { BleLike } from './protocol'
+import { commandRead, commandWrite, type BleLike } from './protocol'
 
 const OTA_CHUNK_SIZE = 244
 const OTA_MAX_IMAGE_SIZE = 1024 * 1024
 
 export async function getFirmwareName(ble: BleLike): Promise<string> {
-  await ble.write(CH.CFG_CMD, new Uint8Array([CMD.GET_FW_NAME]))
-
-  const response = await ble.read(CH.CFG_CMD)
+  const response = await commandRead(ble, CMD.GET_FW_NAME)
   const bytes = new Uint8Array(
     response.buffer,
     response.byteOffset,
@@ -29,9 +27,7 @@ export async function getFirmwareName(ble: BleLike): Promise<string> {
 export async function getHardwareId(
   ble: BleLike,
 ): Promise<'BRHW1' | 'BRHW2' | 'LEGACY_ABI_2'> {
-  await ble.write(CH.CFG_CMD, new Uint8Array([CMD.GET_HW_ID]))
-
-  const response = await ble.read(CH.CFG_CMD)
+  const response = await commandRead(ble, CMD.GET_HW_ID)
   const bytes = new Uint8Array(
     response.buffer,
     response.byteOffset,
@@ -130,7 +126,7 @@ export async function updateFirmware(
     onProgress(0)
 
     // Start OTA on the command channel (a07).
-    await ble.write(CH.CFG_CMD, new Uint8Array([CMD.OTA_START]))
+    await commandWrite(ble, CMD.OTA_START)
 
     // Send image sequentially on the OTA data channel (a08).
     for (let offset = 0; offset < image.byteLength; offset += OTA_CHUNK_SIZE) {
@@ -157,13 +153,13 @@ export async function updateFirmware(
       throw new Error('OTA_CANCELLED')
     }
 
-    await ble.write(CH.CFG_CMD, new Uint8Array([CMD.OTA_END]))
+    await commandWrite(ble, CMD.OTA_END)
     onProgress(100)
   } catch (error) {
     // Match the official implementation: attempt abort even if the
     // START write failed, since the device may have received it.
     try {
-      await ble.write(CH.CFG_CMD, new Uint8Array([CMD.OTA_ABORT]))
+      await commandWrite(ble, CMD.OTA_ABORT)
     } catch {
       // Preserve the original transfer error.
     }

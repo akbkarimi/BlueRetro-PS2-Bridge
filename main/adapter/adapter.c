@@ -49,6 +49,79 @@ struct wired_adapter wired_adapter = {0};
 static uint32_t adapter_out_mask[WIRED_MAX_DEV] = {0};
 static bool rumble_mute = false;
 
+#define ADAPTER_CTRL_STATE_SIZE 17
+#define ADAPTER_CTRL_STATE_STALE_US 750000
+
+struct adapter_ctrl_state {
+    uint32_t buttons;
+    int16_t axes[6];
+    int64_t updated_us;
+};
+
+static struct adapter_ctrl_state ctrl_state[WIRED_MAX_DEV] = {0};
+static portMUX_TYPE ctrl_state_mux = portMUX_INITIALIZER_UNLOCKED;
+
+static int16_t adapter_ctrl_axis_clamp(int32_t value) {
+    if (value > INT16_MAX) return INT16_MAX;
+    if (value < INT16_MIN) return INT16_MIN;
+    return (int16_t)value;
+}
+
+static void adapter_ctrl_state_update(uint8_t port) {
+    if (port >= WIRED_MAX_DEV || !ctrl_input) {
+        return;
+    }
+
+    struct adapter_ctrl_state next = {
+        .buttons = (uint32_t)ctrl_input->btns[0].value,
+        .axes = {
+            adapter_ctrl_axis_clamp(ctrl_input->axes[AXIS_LX].value),
+            adapter_ctrl_axis_clamp(ctrl_input->axes[AXIS_LY].value),
+            adapter_ctrl_axis_clamp(ctrl_input->axes[AXIS_RX].value),
+            adapter_ctrl_axis_clamp(ctrl_input->axes[AXIS_RY].value),
+            adapter_ctrl_axis_clamp(ctrl_input->axes[TRIG_L].value),
+            adapter_ctrl_axis_clamp(ctrl_input->axes[TRIG_R].value),
+        },
+        .updated_us = esp_timer_get_time(),
+    };
+
+    portENTER_CRITICAL(&ctrl_state_mux);
+    ctrl_state[port] = next;
+    portEXIT_CRITICAL(&ctrl_state_mux);
+}
+
+bool adapter_get_controller_state(uint8_t port, uint8_t *dst, uint32_t max) {
+    if (!dst || max < ADAPTER_CTRL_STATE_SIZE || port >= WIRED_MAX_DEV) {
+        return false;
+    }
+
+    struct adapter_ctrl_state snapshot;
+    portENTER_CRITICAL(&ctrl_state_mux);
+    snapshot = ctrl_state[port];
+    portEXIT_CRITICAL(&ctrl_state_mux);
+
+    memset(dst, 0, ADAPTER_CTRL_STATE_SIZE);
+    if (snapshot.updated_us == 0 ||
+        esp_timer_get_time() - snapshot.updated_us > ADAPTER_CTRL_STATE_STALE_US) {
+        dst[16] = 0;
+        return true;
+    }
+
+    dst[0] = (uint8_t)(snapshot.buttons);
+    dst[1] = (uint8_t)(snapshot.buttons >> 8);
+    dst[2] = (uint8_t)(snapshot.buttons >> 16);
+    dst[3] = (uint8_t)(snapshot.buttons >> 24);
+
+    for (uint32_t i = 0; i < 6; i++) {
+        uint16_t v = (uint16_t)snapshot.axes[i];
+        dst[4 + i * 2] = (uint8_t)v;
+        dst[5 + i * 2] = (uint8_t)(v >> 8);
+    }
+
+    dst[16] = 1;
+    return true;
+}
+
 static uint32_t btn_id_to_btn_idx(uint8_t btn_id) {
     if (btn_id < 32) {
         return 0;
@@ -422,6 +495,10 @@ void adapter_bridge(struct bt_data *bt_data) {
         if (wireless_to_generic(bt_data, ctrl_input)) {
             /* Unsupported report */
             return;
+        }
+
+        if (bt_data->base.pids->type == PAD) {
+            adapter_ctrl_state_update(bt_data->base.pids->out_idx);
         }
 
 #ifdef CONFIG_BLUERETRO_ADAPTER_INPUT_DBG

@@ -62,10 +62,15 @@ export const CMD = {
   AUDIO_PREVIEW: 0x15,      // [0x15, melody 0..26]
   AUDIO_PREVIEW_STOP: 0x16, // [0x16]
   AUDIO_SETTINGS: 0x17,     // read: 10 B response / write: [0x17, en, vol, sound×8]
+  GET_CONTROLLER_STATE: 0x18, // write: [0x18, port], read: 17 B input snapshot
   SYS_DEEP_SLEEP: 0x37,
   SYS_RESET: 0x38,
   SYS_FACTORY: 0x39,
 } as const
+
+/** Controller monitor normalization and analog-trigger activation threshold. */
+export const CONTROLLER_STICK_SCALE = 128
+export const CONTROLLER_TRIGGER_MIN = 20
 
 /** MX config slots (mx_config.h enum mx_cfg_slot) */
 export const MX_SLOT = {
@@ -77,6 +82,7 @@ export const MX_SLOT = {
   PAGES: 5,   // read-only for writes (firmware rejects)
   FEATURES: 6, // 1 B
   KEYS: 7,    // 2 B  {saver_combo, menu_combo} — configurable shortcut combos
+  MAC: 8,     // 8 B  {magic, enabled, Bluetooth BR/EDR address[6]} — applied on reboot
 } as const
 
 /** Shortcut combo ids — must match mx_config.h MX_KEYS_COMBO_* */

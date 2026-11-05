@@ -7,14 +7,21 @@ An ESP32-based BlueRetro firmware project configured for PlayStation 1 / PlaySta
 - `main/` — ESP-IDF firmware source
 - `configs/hw2/playstation` — HW2 PlayStation configuration
 - `webapp/` — Web Bluetooth configuration application (version 4.4.0)
-- `shared/protocol.yaml` — shared protocol definitions
+- `shared/protocol.yaml` — shared protocol definitions, including the controller monitor and MAC configuration extensions
 - `docs/` — project and upstream documentation
 
 ## Firmware configuration
 
-The checked-in `sdkconfig` targets ESP32, HW2, and PSX / PS2, with a 4 MB flash profile. The firmware project version is `mx-v6`.
+The checked-in `sdkconfig.defaults` and `configs/hw2/playstation` target ESP32, HW2, and PSX / PS2, with a 4 MB flash profile. The firmware project version is `mx-v6`.
 
 The firmware version string is retained for identification and compatibility; it is not the repository name. Always verify that the selected hardware configuration matches the actual board.
+
+## Added WebApp / firmware features
+
+- Controller Test reads live button, stick, and trigger snapshots from BLE command `0x18`.
+- MAC Address Spoof stores a custom Bluetooth BR/EDR address in MX config slot `8`; the ESP32 base MAC is adjusted before Bluetooth controller startup. A power cycle is required after saving.
+
+These extensions require the matching updated firmware and WebApp. Older firmware reports the corresponding feature as unsupported; no existing command IDs or the four-byte global configuration are repurposed.
 
 ## Run the WebApp
 

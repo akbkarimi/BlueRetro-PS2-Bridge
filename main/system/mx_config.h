@@ -17,6 +17,7 @@ enum mx_cfg_slot {
     MX_SLOT_PAGES,
     MX_SLOT_FEATURES,
     MX_SLOT_KEYS,
+    MX_SLOT_MAC,
     MX_SLOT_LAST,
 };
 
@@ -97,6 +98,14 @@ struct mx_keys_cfg {
     uint8_t menu_combo;     /* Combo that returns to the main menu pages */
 } __packed;
 
+/* Bluetooth BR/EDR address override. mac[] is in display/MSB-first order.
+   The ESP32 BT controller derives its address from the base MAC + 2. */
+struct mx_mac_cfg {
+    uint8_t magic;          /* 0x4D — distinguishes this slot from legacy slots */
+    uint8_t enabled;
+    uint8_t mac[6];
+} __packed;
+
 #define MX_KEYS_COMBO_COUNT 8
 
 /* Combo ids shared with the WebApp (Shortcuts page comboboxes).
@@ -123,6 +132,7 @@ const struct mx_idle_cfg *mx_cfg_idle(void);
 const struct mx_time_cfg *mx_cfg_time(void);
 const struct mx_features_cfg *mx_cfg_features(void);
 const struct mx_keys_cfg *mx_cfg_keys(void);
+const struct mx_mac_cfg *mx_cfg_mac(void);
 void mx_cfg_set_time(const struct mx_time_cfg *t);
 
 /* Monotonic counter bumped every time the LED slot changes (web write or

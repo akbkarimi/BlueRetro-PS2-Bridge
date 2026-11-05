@@ -31,6 +31,26 @@ function withMxLock<T>(fn: () => Promise<T>): Promise<T> {
   return run
 }
 
+/** The command characteristic is a shared command register: write + read must
+ * stay atomic, otherwise concurrent pages can read another command's reply. */
+let cmdLock: Promise<unknown> = Promise.resolve()
+function withCmdLock<T>(fn: () => Promise<T>): Promise<T> {
+  const run = cmdLock.then(fn, fn)
+  cmdLock = run.then(() => undefined, () => undefined)
+  return run
+}
+
+export function commandRead(ble: BleLike, command: number, ...args: number[]): Promise<DataView> {
+  return withCmdLock(async () => {
+    await ble.write(CH.CFG_CMD, u8(command, ...args))
+    return ble.read(CH.CFG_CMD)
+  })
+}
+
+export function commandWrite(ble: BleLike, command: number, ...args: number[]): Promise<void> {
+  return withCmdLock(() => ble.write(CH.CFG_CMD, u8(command, ...args)))
+}
+
 /** Small delay so the ESP32 ATT server can process the slot-select write */
 const MX_SETTLE_MS = 30
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
@@ -282,18 +302,75 @@ export async function saveKeysCfg(ble: BleLike, c: KeysCfg) {
   ))
 }
 
+/* ---- Bluetooth MAC spoof slot (8 bytes: magic + enabled + 6-byte address) ---- */
+export interface MacSpoofCfg { enabled: boolean; mac: number[] }
+
+export async function readMacSpoofCfg(ble: BleLike): Promise<MacSpoofCfg> {
+  const dv = await mxRead(ble, MX_SLOT.MAC)
+  if (dv.byteLength < 8 || b8(dv, 0) !== 0x4D) throw new Error('MAC_SLOT_UNSUPPORTED')
+  return {
+    enabled: b8(dv, 1) !== 0,
+    mac: Array.from({ length: 6 }, (_, i) => b8(dv, i + 2)),
+  }
+}
+
+export async function saveMacSpoofCfg(ble: BleLike, cfg: MacSpoofCfg) {
+  if (cfg.mac.length !== 6) throw new Error('MAC_LENGTH_INVALID')
+  const mac = cfg.mac.map((v) => v & 0xff)
+  const any = mac.some((v) => v !== 0)
+  const base = [...mac]
+  let borrow = 2
+  for (let i = 5; i >= 0 && borrow > 0; i--) {
+    if (base[i] >= borrow) {
+      base[i] -= borrow
+      borrow = 0
+    } else {
+      base[i] = 256 + base[i] - borrow
+      borrow = 1
+    }
+  }
+  const baseAny = base.some((v) => v !== 0)
+  if (cfg.enabled && (!any || (mac[0] & 1) !== 0 || borrow > 0 || !baseAny || (base[0] & 1) !== 0)) {
+    throw new Error('MAC_ADDRESS_INVALID')
+  }
+  await mxWrite(ble, MX_SLOT.MAC, u8(0x4D, cfg.enabled ? 1 : 0, ...mac))
+}
+
 /* ---------------- command channel (a07) ---------------- */
 export async function previewMelody(ble: BleLike, id: number) {
-  await ble.write(CH.CFG_CMD, u8(CMD.AUDIO_PREVIEW, Math.max(0, Math.min(26, id | 0))))
+  await commandWrite(ble, CMD.AUDIO_PREVIEW, Math.max(0, Math.min(26, id | 0)))
 }
 
 export async function stopMelodyPreview(ble: BleLike) {
-  await ble.write(CH.CFG_CMD, u8(CMD.AUDIO_PREVIEW_STOP))
+  await commandWrite(ble, CMD.AUDIO_PREVIEW_STOP)
 }
 
-export const sendDeepSleep = (ble: BleLike) => ble.write(CH.CFG_CMD, u8(CMD.SYS_DEEP_SLEEP))
-export const sendEspReset = (ble: BleLike) => ble.write(CH.CFG_CMD, u8(CMD.SYS_RESET))
-export const sendFactoryReset = (ble: BleLike) => ble.write(CH.CFG_CMD, u8(CMD.SYS_FACTORY))
+export const sendDeepSleep = (ble: BleLike) => commandWrite(ble, CMD.SYS_DEEP_SLEEP)
+export const sendEspReset = (ble: BleLike) => commandWrite(ble, CMD.SYS_RESET)
+export const sendFactoryReset = (ble: BleLike) => commandWrite(ble, CMD.SYS_FACTORY)
+
+export interface ControllerState {
+  btns: number
+  lx: number; ly: number; rx: number; ry: number
+  l2: number; r2: number
+  valid: boolean
+}
+
+export async function getControllerState(ble: BleLike, port: number): Promise<ControllerState> {
+  if (!Number.isInteger(port) || port < 0 || port > 11) throw new Error('CONTROLLER_PORT_INVALID')
+  const dv = await commandRead(ble, CMD.GET_CONTROLLER_STATE, port)
+  if (dv.byteLength !== 17) throw new Error('CONTROLLER_STATE_UNSUPPORTED')
+  return {
+    btns: dv.getUint32(0, true),
+    lx: dv.getInt16(4, true),
+    ly: dv.getInt16(6, true),
+    rx: dv.getInt16(8, true),
+    ry: dv.getInt16(10, true),
+    l2: dv.getInt16(12, true),
+    r2: dv.getInt16(14, true),
+    valid: dv.getUint8(16) !== 0,
+  }
+}
 
 /* ---------------- version / identity ---------------- */
 export async function getApiVersion(ble: BleLike): Promise<number> {

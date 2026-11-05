@@ -9,7 +9,7 @@ import { useEffect } from 'react'
 import {
   Gamepad2, MonitorSmartphone, Music, Palette, Zap, Settings2, Cpu,
   Radio, Table2, Bug, CircleHelp, House, Sun, Moon, Languages, Unplug,
-  Loader2, Bluetooth, Usb, Info,
+  Loader2, Bluetooth, Usb, Info, Shield,
 } from 'lucide-react'
 import { useBr, type PageId } from '@/lib/br/store'
 import { makeT, LANGS, type DictKey } from '@/lib/br/i18n'
@@ -31,6 +31,8 @@ import { SystemPage } from './pages/SystemPage'
 import { ReferencePage } from './pages/ReferencePage'
 import { DebugPage } from './pages/DebugPage'
 import { HelpPage } from './pages/HelpPage'
+import { ControllerTestPage } from './pages/ControllerTestPage'
+import { MacSpoofPage } from './pages/MacSpoofPage'
 
 const NAV: { id: PageId; icon: React.ComponentType<{ className?: string }>; key: DictKey; methylene?: boolean }[] = [
   { id: 'home', icon: House, key: 'home' },
@@ -39,6 +41,8 @@ const NAV: { id: PageId; icon: React.ComponentType<{ className?: string }>; key:
   { id: 'colors', icon: Palette, key: 'colors', methylene: true },
   { id: 'shortcuts', icon: Zap, key: 'shortcuts', methylene: true },
   { id: 'ports', icon: Radio, key: 'ports', methylene: true },
+  { id: 'controller-test', icon: Gamepad2, key: 'controllerTest', methylene: true },
+  { id: 'macspoof', icon: Shield, key: 'macSpoof', methylene: true },
   { id: 'advance', icon: Settings2, key: 'advance' },
   { id: 'system', icon: Cpu, key: 'system' },
   { id: 'reference', icon: Table2, key: 'reference' },
@@ -50,6 +54,7 @@ const PAGES: Record<PageId, React.ComponentType> = {
   home: HomePage, display: DisplayPage, sound: SoundPage, colors: ColorsPage,
   shortcuts: ShortcutsPage, ports: PortsPage, advance: AdvancePage,
   system: SystemPage, reference: ReferencePage, debug: DebugPage, help: HelpPage,
+  'controller-test': ControllerTestPage, macspoof: MacSpoofPage,
 }
 
 function webBtState(): 'ok' | 'insecure' | 'missing' {

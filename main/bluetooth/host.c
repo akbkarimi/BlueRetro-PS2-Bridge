@@ -26,6 +26,7 @@
 #include "debug.h"
 #include "mon.h"
 #include "system/fs.h"
+#include "system/mx_config.h"
 #include "adapter/config.h"
 #include "adapter/gameid.h"
 #include "adapter/memory_card.h"
@@ -90,14 +91,60 @@ static esp_vhci_host_callback_t vhci_host_cb = {
 };
 
 static int32_t bt_host_load_bdaddr_from_nvs(void) {
-    int32_t ret = -1;
+    const struct mx_mac_cfg *cfg = mx_cfg_mac();
+    uint8_t base_mac[6];
+    uint8_t any = 0;
 
-    // uint8_t test_mac[6] = {0x48, 0xf1, 0xeb, 0xed, 0xf4, 0x1d};
-    // test_mac[5] -= 2; /* Set base mac to BDADDR-2 so that BDADDR end up what we want */
-    // esp_base_mac_addr_set(test_mac);
-    // printf("# %s: Using NVS MAC\n", __FUNCTION__);
-    // ret = 0;
-    return ret;
+    if (!cfg || !cfg->enabled) {
+        return 0;
+    }
+
+    uint8_t target_any = 0;
+    for (uint32_t i = 0; i < sizeof(cfg->mac); i++) {
+        target_any |= cfg->mac[i];
+    }
+    if (!target_any || (cfg->mac[0] & 1U)) {
+        printf("# %s: invalid configured Bluetooth address\n", __FUNCTION__);
+        return -1;
+    }
+
+    /* ESP-IDF derives the Bluetooth controller address as base MAC + 2.
+       Convert the requested displayed BD_ADDR back to the base MAC. */
+    uint64_t address = 0;
+    for (uint32_t i = 0; i < sizeof(cfg->mac); i++) {
+        address = (address << 8) | cfg->mac[i];
+    }
+    if (address < 2) {
+        printf("# %s: configured Bluetooth address underflows the ESP32 base MAC\n",
+            __FUNCTION__);
+        return -1;
+    }
+    address -= 2;
+
+    for (int32_t i = 5; i >= 0; i--) {
+        base_mac[i] = (uint8_t)(address & 0xFFU);
+        address >>= 8;
+        any |= base_mac[i];
+    }
+
+    /* esp_base_mac_addr_set() requires a non-zero unicast base address. */
+    if (!any || (base_mac[0] & 1U)) {
+        printf("# %s: configured Bluetooth address cannot be represented by a valid ESP32 base MAC\n",
+            __FUNCTION__);
+        return -1;
+    }
+
+    esp_err_t err = esp_base_mac_addr_set(base_mac);
+    if (err != ESP_OK) {
+        printf("# %s: failed to set Bluetooth base MAC: %s\n",
+            __FUNCTION__, esp_err_to_name(err));
+        return err;
+    }
+
+    printf("# %s: custom Bluetooth address enabled: %02X:%02X:%02X:%02X:%02X:%02X\n",
+        __FUNCTION__, cfg->mac[0], cfg->mac[1], cfg->mac[2],
+        cfg->mac[3], cfg->mac[4], cfg->mac[5]);
+    return 0;
 }
 
 static int32_t bt_host_load_keys_from_file(struct bt_host_link_keys *data) {
@@ -704,7 +751,9 @@ int32_t bt_host_init(void) {
     gpio_set_level(26, 1);
 #endif
 
-    bt_host_load_bdaddr_from_nvs();
+    if (bt_host_load_bdaddr_from_nvs() != 0) {
+        printf("# %s: continuing with the factory Bluetooth address\n", __FUNCTION__);
+    }
 
     bt_mon_init();
 

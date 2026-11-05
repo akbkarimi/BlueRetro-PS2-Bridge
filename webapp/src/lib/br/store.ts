@@ -14,7 +14,7 @@ import type { Lang } from './i18n'
 
 export type PageId =
   | 'home' | 'display' | 'sound' | 'colors' | 'shortcuts'
-  | 'ports' | 'advance' | 'system' | 'reference' | 'debug' | 'help'
+  | 'ports' | 'controller-test' | 'macspoof' | 'advance' | 'system' | 'reference' | 'debug' | 'help'
 
 export interface LogEntry {
   ts: number
@@ -96,8 +96,27 @@ async function createRealBle(log: (e: LogEntry) => void): Promise<{ ble: BleLike
     },
   }
   const onLost = () => {
+    // Ignore delayed disconnect events from a connection that is no longer active.
+    if (realBle !== ble) return
+
     log({ ts: Date.now(), dir: 'ev', ch: 0, msg: 'GATT disconnected (device lost)' })
-    useBr.setState({ connected: false, error: 'connection-lost' })
+    realBle = null
+    realDisconnect = null
+    useBr.setState({
+      connected: false,
+      connecting: false,
+      fw: null,
+      api: null,
+      bdaddr: null,
+      sys: null,
+      audio: null,
+      oled: null,
+      led: null,
+      idle: null,
+      features: null,
+      keys: null,
+      error: 'connection-lost',
+    })
   }
   device.addEventListener('gattserverdisconnected', onLost)
   const disconnect = () => {
@@ -173,6 +192,9 @@ export const useBr = create<BrStore>((set, get) => ({
       } else {
         msg = raw
       }
+      realDisconnect?.()
+      realBle = null
+      realDisconnect = null
       set({ connecting: false, connected: false, error: msg })
       toast.error(msg)
     }
