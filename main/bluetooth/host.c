@@ -718,6 +718,11 @@ reset_dev:
      * harmless because disarming NULLs the handle. */
     bt_hci_disarm_conn_watchdog(device);
 
+    int32_t out_idx = device->ids.out_idx;
+    if (out_idx >= 0 && out_idx < WIRED_MAX_DEV) {
+        adapter_reset_controller_state((uint8_t)out_idx);
+    }
+
     adapter_init_buffer(dev_id);
     memset(bt_adapter.data[dev_id].raw_src_mappings, 0, sizeof(*bt_adapter.data[0].raw_src_mappings) * REPORT_MAX);
     memset(bt_adapter.data[dev_id].reports, 0, sizeof(bt_adapter.data[0].reports));

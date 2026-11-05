@@ -90,6 +90,16 @@ static void adapter_ctrl_state_update(uint8_t port) {
     portEXIT_CRITICAL(&ctrl_state_mux);
 }
 
+void adapter_reset_controller_state(uint8_t port) {
+    if (port >= WIRED_MAX_DEV) {
+        return;
+    }
+
+    portENTER_CRITICAL(&ctrl_state_mux);
+    memset(&ctrl_state[port], 0, sizeof(ctrl_state[port]));
+    portEXIT_CRITICAL(&ctrl_state_mux);
+}
+
 bool adapter_get_controller_state(uint8_t port, uint8_t *dst, uint32_t max) {
     if (!dst || max < ADAPTER_CTRL_STATE_SIZE || port >= WIRED_MAX_DEV) {
         return false;
