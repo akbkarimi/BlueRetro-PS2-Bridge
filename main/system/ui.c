@@ -1688,6 +1688,12 @@ void ui_mx_apply(void) {
         if (mi->mode == MX_IDLE_OFF) {
             cfg.saver_after_s = 0;                  /* No screensaver */
         }
+        else if (mi->mode == MX_IDLE_AUTO) {
+            cfg.saver_mode = UI_SAVER_AUTO;
+            if (mi->idle_timeout) {
+                cfg.saver_after_s = mi->idle_timeout;
+            }
+        }
         else if (mi->mode <= MX_IDLE_LOGO_PLAYSTATION) {
             cfg.saver_mode = (uint8_t)(mi->mode - 1);   /* MX mode N -> saver N-1 */
             if (mi->idle_timeout) {

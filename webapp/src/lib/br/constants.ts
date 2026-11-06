@@ -111,6 +111,7 @@ export const IDLE_MODES = [
   { id: 9, en: 'Rectangular clock', fa: 'ساعت مستطیلی' },
   { id: 10, en: 'PS logo', fa: 'لوگوی PS' },
   { id: 11, en: 'PlayStation wordmark', fa: 'لوگوی PlayStation' },
+  { id: 12, en: 'Auto (cycle all)', fa: 'چرخش خودکار همه' },
 ] as const
 
 /** OLED info pages — ui.c page_id_t */

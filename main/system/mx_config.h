@@ -68,6 +68,7 @@ enum mx_idle_mode {
     MX_IDLE_CLOCK_RECT,
     MX_IDLE_LOGO_PS,
     MX_IDLE_LOGO_PLAYSTATION,
+    MX_IDLE_AUTO,
 };
 
 /* Number of built-in melodies shared with the UI/audio engine (ui.h).

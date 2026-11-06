@@ -238,7 +238,7 @@ export async function readIdleCfg(ble: BleLike): Promise<IdleCfg> {
 
 export async function saveIdleCfg(ble: BleLike, c: IdleCfg) {
   const b = new Uint8Array(3)
-  b[0] = Math.max(0, Math.min(11, c.mode | 0))
+  b[0] = Math.max(0, Math.min(12, c.mode | 0))
   b[1] = c.timeoutSec & 0xff
   b[2] = (c.timeoutSec >> 8) & 0xff
   await mxWrite(ble, MX_SLOT.IDLE, b)

@@ -286,7 +286,7 @@ static void mx_config_load_all(void)
     }
 
     if (mx_nvs_load("idle", &i, sizeof(i)) &&
-        i.mode <= MX_IDLE_LOGO_PLAYSTATION) {
+        i.mode <= MX_IDLE_AUTO) {
         idle_cfg = i;
     }
 
@@ -468,7 +468,7 @@ int32_t mx_config_write_blob(const uint8_t *src, uint32_t len)
 
         memcpy(&tmp, src, sizeof(tmp));
 
-        if (tmp.mode > MX_IDLE_LOGO_PLAYSTATION) {
+        if (tmp.mode > MX_IDLE_AUTO) {
             return -1;
         }
 
