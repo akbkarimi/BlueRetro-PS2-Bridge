@@ -135,6 +135,9 @@ const struct mx_features_cfg *mx_cfg_features(void);
 const struct mx_keys_cfg *mx_cfg_keys(void);
 const struct mx_mac_cfg *mx_cfg_mac(void);
 void mx_cfg_set_time(const struct mx_time_cfg *t);
+/* Thread-safe copies for tasks other than the one that owns the data */
+void mx_cfg_time_get(struct mx_time_cfg *out);
+void mx_cfg_ui_snapshot(struct mx_audio_cfg *a, struct mx_oled_cfg *o, struct mx_idle_cfg *i);
 
 /* Monotonic counter bumped every time the LED slot changes (web write or
    touch swipe). Lets the manager re-send lightbar colors on any change. */

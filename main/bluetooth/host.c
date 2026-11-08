@@ -262,8 +262,14 @@ static void bt_fb_task(void *param) {
 
     while(1) {
         bool fb_changed = false;
-        /* Look for rumble/led feedback data */
-        while ((fb_data = (struct raw_fb *)queue_bss_dequeue(wired_adapter.input_q_hdl, &fb_len))) {
+        /* Look for rumble/led feedback data. Two single-producer queues: wired ISRs and
+           task level producers each own one; this task is the only consumer of both. */
+        void *fb_queues[2] = { wired_adapter.input_q_hdl, wired_adapter.sys_q_hdl };
+
+        for (uint32_t qi = 0; qi < 2; qi++) {
+        void *fb_q = fb_queues[qi];
+
+        while (fb_q && (fb_data = (struct raw_fb *)queue_bss_dequeue(fb_q, &fb_len))) {
             struct bt_dev *device = NULL;
             struct bt_data *bt_data = NULL;
 
@@ -306,7 +312,8 @@ static void bt_fb_task(void *param) {
                 default:
                     break;
             }
-            queue_bss_return(wired_adapter.input_q_hdl, (uint8_t *)fb_data, fb_len);
+            queue_bss_return(fb_q, (uint8_t *)fb_data, fb_len);
+        }
         }
 
         /* TX Feedback every 10 ms if rumble on, every 3 sec otherwise */

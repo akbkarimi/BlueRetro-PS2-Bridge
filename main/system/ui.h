@@ -29,6 +29,7 @@ typedef enum {
                                The OLED stage decides what it means (saver vs battery). */
     UI_EVT_SAVER_ENTER,     /* Shortcut combo: put the OLED in screensaver mode now */
     UI_EVT_MENU_ENTER,      /* Shortcut combo: back to the main menu pages */
+    UI_EVT_REDRAW,          /* Redraw only (e.g. battery value changed): not an activity */
 } ui_evt_t;
 
 /* Touchpad swipe directions for UI_EVT_TOUCH_SWIPE */

@@ -136,7 +136,8 @@ int32_t queue_bss_return(queue_bss_handle_t qhdl, uint8_t *item, uint32_t *item_
         return -1;
     }
 
-    if (lfds711_queue_bss_enqueue(&q->item_free_state, item_len, item)) {
+    /* lfds711 returns 1 on success, 0 when the queue is full */
+    if (!lfds711_queue_bss_enqueue(&q->item_free_state, item_len, item)) {
         return -1;
     }
     return 0;

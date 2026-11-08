@@ -558,7 +558,8 @@ struct wired_data {
 struct wired_adapter {
     /* from wired driver */
     int32_t system_id;
-    void *input_q_hdl;
+    void *input_q_hdl;      /* Producer: wired ISRs (core 1, all at interrupt level 2) */
+    void *sys_q_hdl;        /* Producer: core 0 tasks, serialized by a critical section */
     /* from adapter */
     int32_t driver_mode;
     /* Bi-directional */
@@ -595,7 +596,8 @@ void adapter_reset_controller_state(uint8_t port);
 void adapter_fb_stop_timer_start(uint8_t dev_id, uint64_t dur_us);
 void adapter_fb_stop_timer_stop(uint8_t dev_id);
 bool adapter_bridge_fb(struct raw_fb *fb_data, struct bt_data *bt_data);
-int32_t adapter_q_fb(struct raw_fb *fb_data);
+int32_t adapter_q_fb(struct raw_fb *fb_data);       /* From wired ISRs only */
+int32_t adapter_q_fb_sys(struct raw_fb *fb_data);   /* From any FreeRTOS task */
 void adapter_toggle_fb(uint32_t wired_id, uint32_t duration_us, uint8_t lf_pwr, uint8_t hf_pwr);
 void adapter_init(void);
 void adapter_meta_init(void);

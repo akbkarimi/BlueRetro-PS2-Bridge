@@ -427,7 +427,7 @@ static void wired_port_hdl(void) {
             fb_data.header.wired_id = device->ids.out_idx;
             fb_data.header.type = FB_TYPE_PLAYER_LED;
             fb_data.header.data_len = 0;
-            fb_ret = adapter_q_fb(&fb_data);
+            fb_ret = adapter_q_fb_sys(&fb_data);
 
             if (pad_color_changed && fb_ret != 0) {
                 pad_color_refresh_ok = 0;
@@ -481,6 +481,30 @@ void manager_send_pad_colors(void) {
     pad_colors_req = 1;
 }
 
+static volatile uint32_t pad_led_req_mask = 0;
+
+/* Ask for one pad's lightbar color to be re-sent. Safe from any task or timer. */
+void manager_request_pad_led(uint8_t out_idx) {
+    if (out_idx < 32) {
+        __atomic_fetch_or(&pad_led_req_mask, 1UL << out_idx, __ATOMIC_SEQ_CST);
+    }
+}
+
+static void manager_do_send_pad_led_mask(void) {
+    uint32_t mask = __atomic_exchange_n(&pad_led_req_mask, 0, __ATOMIC_SEQ_CST);
+
+    for (uint32_t i = 0; mask && i < 32; i++, mask >>= 1) {
+        if (mask & 1U) {
+            struct raw_fb fb_data = {0};
+
+            fb_data.header.wired_id = i;
+            fb_data.header.type = FB_TYPE_PLAYER_LED;
+            fb_data.header.data_len = 0;
+            adapter_q_fb_sys(&fb_data);
+        }
+    }
+}
+
 static void manager_do_send_pad_colors(void) {
     for (int32_t i = 0; i < BT_MAX_DEV; i++) {
         struct bt_dev *device = NULL;
@@ -492,7 +516,7 @@ static void manager_do_send_pad_colors(void) {
             fb_data.header.wired_id = device->ids.out_idx;
             fb_data.header.type = FB_TYPE_PLAYER_LED;
             fb_data.header.data_len = 0;
-            adapter_q_fb(&fb_data);
+            adapter_q_fb_sys(&fb_data);
         }
     }
 }
@@ -602,6 +626,9 @@ static void sys_mgr_task(void *arg) {
         if (pad_colors_req) {
             pad_colors_req = 0;
             manager_do_send_pad_colors();
+        }
+        if (pad_led_req_mask) {
+            manager_do_send_pad_led_mask();
         }
 
         mx_config_flush();

@@ -165,6 +165,12 @@ static ui_state_t st = ST_READY;
 static uint8_t pads = 0;
 static stage_t stage = STG_ACTIVE;
 static bool redraw = true;
+/* MX web panel -> OLED options. Written by ui_task only (mx_apply_task). */
+static volatile bool mx_apply_pending = false;
+static bool oled_enabled = true;            /* MX OLED "enabled": false keeps the panel dark */
+static bool oled_notifications = true;      /* MX OLED "notifications": toasts */
+static bool oled_touchpad_nav = true;       /* MX OLED "touchpad_nav": left/right swipes */
+static void mx_apply_task(void);
 static uint32_t last_act_ms = 0;
 static uint32_t saver_t0_ms = 0;
 static uint32_t shift_t0_ms = 0;
@@ -978,6 +984,9 @@ static void audio_settings_save(void) {
 static stage_t compute_stage(uint32_t idle_s) {
     stage_t s = STG_ACTIVE;
 
+    if (!oled_enabled && st != ST_ERROR) {
+        return STG_OFF;
+    }
     if (cfg.dim_after_s && idle_s >= cfg.dim_after_s) {
         s = STG_DIM;
     }
@@ -1059,6 +1068,11 @@ static void update(void) {
     }
     if (settings_loaded && !audio_settings_loaded) {
         audio_settings_load();
+    }
+    if (mx_apply_pending &&
+        ((settings_loaded && audio_settings_loaded) || load_tries >= SETTINGS_LOAD_TRIES)) {
+        mx_apply_pending = false;
+        mx_apply_task();
     }
 
     if (save_pending && (t - save_req_ms) >= SETTINGS_SAVE_DELAY_MS) {
@@ -1212,6 +1226,9 @@ static void handle_msg(const ui_msg_t *msg) {
             page_move(-1);
             break;
         case UI_EVT_TOUCH_SWIPE:
+            if (!oled_touchpad_nav && (msg->val == UI_SWIPE_LEFT || msg->val == UI_SWIPE_RIGHT)) {
+                break;
+            }
             /* Stage dependent meaning (spec workbook, touchpad sheet):
                screensaver stage: left/right = previous/next screensaver, up/down = color
                active stage:      left/right = pad 1/2 battery toast, up/down = color */
@@ -1275,8 +1292,10 @@ static void handle_msg(const ui_msg_t *msg) {
                poll is a backstop, this makes the change instant). */
             manager_send_pad_colors();
 
-            snprintf(toast_buf, sizeof(toast_buf), "COLOR: %s", pad_presets[idx].name);
-            toast_until_ms = now_ms() + TOAST_MS;
+            if (oled_notifications) {
+                snprintf(toast_buf, sizeof(toast_buf), "COLOR: %s", pad_presets[idx].name);
+                toast_until_ms = now_ms() + TOAST_MS;
+            }
             redraw = true;
             break;
         }
@@ -1316,6 +1335,10 @@ static void handle_msg(const ui_msg_t *msg) {
             }
             break;
         }
+        case UI_EVT_REDRAW:
+            redraw = true;
+            activity = false;
+            break;
         case UI_EVT_ACTIVITY:
         default:
             break;
@@ -1639,8 +1662,9 @@ bool ui_color_flash_get(uint8_t out_idx, uint32_t *rgb) {
 }
 
 void ui_battery_set(uint8_t out_idx, uint8_t percent) {
-    if (out_idx < UI_BATT_PORTS) {
+    if (out_idx < UI_BATT_PORTS && battery_pct[out_idx] != percent) {
         battery_pct[out_idx] = percent;
+        ui_event(UI_EVT_REDRAW);        /* Battery page shows the new value, no wake-up */
     }
 }
 
@@ -1652,69 +1676,88 @@ void ui_pad_disconnected(uint8_t out_idx) {
     if (out_idx < UI_BATT_PORTS) {
         battery_pct[out_idx] = 0xFF;
         memset(&touch[out_idx], 0, sizeof(touch[out_idx]));
+        ui_color_flash_stop(out_idx);
+        ui_event(UI_EVT_REDRAW);
     }
 }
 
 /* Push the MX config slots into the UI/audio settings.
    Called after boot (main.c) and after every MX slot write from BLE (att_cfg.c). */
+/* Called from main() and from the BLE task. It only raises a flag: the real work runs in
+   ui_task (mx_apply_task), after the legacy settings were loaded, so that (1) no UI state
+   is shared with the BLE task and (2) the MX values are not overwritten by an old NVS blob. */
 void ui_mx_apply(void) {
-    const struct mx_audio_cfg *ma = mx_cfg_audio();
-    const struct mx_oled_cfg *mo = mx_cfg_oled();
-    const struct mx_idle_cfg *mi = mx_cfg_idle();
+    mx_apply_pending = true;
+    ui_event(UI_EVT_REDRAW);
+}
 
-    if (ma) {
+static void mx_apply_task(void) {
+    struct mx_audio_cfg ma;
+    struct mx_oled_cfg mo;
+    struct mx_idle_cfg mi;
+
+    mx_cfg_ui_snapshot(&ma, &mo, &mi);
+
+    {
         ui_audio_settings_t a;
 
         ui_audio_settings_get(&a);
-        a.enabled = ma->enabled ? 1 : 0;
-        a.volume = ma->volume;
-        a.sound[UI_SND_BOOT] = ma->ev_power_on;
-        a.sound[UI_SND_CONNECT] = ma->ev_bt_connect;
-        a.sound[UI_SND_DISCONNECT] = ma->ev_bt_disconnect;
-        a.sound[UI_SND_POWER_OFF] = ma->ev_power_off;
-        a.sound[UI_SND_RESET] = ma->ev_reset;
+        a.enabled = ma.enabled ? 1 : 0;
+        a.volume = ma.volume;
+        a.sound[UI_SND_BOOT] = ma.ev_power_on;
+        a.sound[UI_SND_CONNECT] = ma.ev_bt_connect;
+        a.sound[UI_SND_DISCONNECT] = ma.ev_bt_disconnect;
+        a.sound[UI_SND_POWER_OFF] = ma.ev_power_off;
+        a.sound[UI_SND_RESET] = ma.ev_reset;
         ui_audio_settings_set(&a);
     }
 
-    if (mo) {
-        /* Pages list, filtered to the pages this firmware renders */
+    oled_enabled = mo.enabled != 0;
+    oled_notifications = mo.notifications != 0;
+    oled_touchpad_nav = mo.touchpad_nav != 0;
+    if (!oled_notifications) {
+        toast_until_ms = 0;
+    }
+
+    /* Pages list, filtered to the pages this firmware renders. An empty list is valid
+       (page_move() and the page lookup already handle pages_cnt == 0). */
+    {
         uint8_t n = 0;
 
-        for (int i = 0; i < MX_OLED_PAGES_MAX && i < mo->page_cnt; i++) {
-            if (mo->pages[i] < PAGE_MAX) {
-                pages_enabled[n++] = mo->pages[i];
+        for (int i = 0; i < MX_OLED_PAGES_MAX && i < mo.page_cnt; i++) {
+            if (mo.pages[i] < PAGE_MAX) {
+                pages_enabled[n++] = mo.pages[i];
             }
         }
-        if (n) {
-            pages_cnt = n;
-            if (page_cur >= pages_cnt) {
-                page_cur = 0;
-            }
+        pages_cnt = n;
+        if (page_cur >= pages_cnt) {
+            page_cur = 0;
         }
-
-        /* Panel height + rotation: applied inside the UI task (SSD1306 bus) */
-        mx_geom_pending = 1;
-        ui_event(UI_EVT_SETTINGS);
     }
 
-    if (mi) {
-        if (mi->mode == MX_IDLE_OFF) {
-            cfg.saver_after_s = 0;                  /* No screensaver */
-        }
-        else if (mi->mode == MX_IDLE_AUTO) {
-            cfg.saver_mode = UI_SAVER_AUTO;
-            if (mi->idle_timeout) {
-                cfg.saver_after_s = mi->idle_timeout;
-            }
-        }
-        else if (mi->mode <= MX_IDLE_LOGO_PLAYSTATION) {
-            cfg.saver_mode = (uint8_t)(mi->mode - 1);   /* MX mode N -> saver N-1 */
-            if (mi->idle_timeout) {
-                cfg.saver_after_s = mi->idle_timeout;
-            }
-        }
-        ui_event(UI_EVT_SETTINGS);
+    /* Idle: 0 seconds means "never", exactly like the WebApp offers it */
+    if (mi.mode == MX_IDLE_OFF) {
+        cfg.saver_after_s = 0;
     }
+    else if (mi.mode == MX_IDLE_AUTO) {
+        cfg.saver_mode = UI_SAVER_AUTO;
+        cfg.saver_after_s = mi.idle_timeout;
+    }
+    else if (mi.mode <= MX_IDLE_LOGO_PLAYSTATION) {
+        cfg.saver_mode = (uint8_t)(mi.mode - 1);        /* MX mode N -> saver N-1 */
+        cfg.saver_after_s = mi.idle_timeout;
+    }
+
+    /* Same steps as UI_EVT_SETTINGS but without marking the legacy blob for saving: an
+       apply at boot is not a user change and must not cost an NVS write on every start. */
+    settings_sanitize();
+    audio_settings_sync_legacy();
+    mx_geom_pending = 1;
+    mx_geom_apply();
+    if (oled_ok) {
+        apply_contrast();
+    }
+    redraw = true;
 }
 
 #else /* Not a PS1/PS2 build: do nothing, so other configs are unaffected */

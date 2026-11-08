@@ -57,10 +57,6 @@ static uint32_t tick_ms(void) {
     return (uint32_t)xTaskGetTickCount() * portTICK_PERIOD_MS;
 }
 
-static bool combo_ready(const struct shortcut_state *s, uint32_t now) {
-    return (now - s->home_t0) >= COMBO_RETRY_SKIP_MS;
-}
-
 /* Both combo buttons pressed now, and at least one of them went down
    since the previous report (edge trigger, no auto-repeat). */
 static bool combo_pressed(uint32_t btns, uint32_t prev, uint32_t mask) {
@@ -137,6 +133,12 @@ void shortcut_hdl(struct wired_ctrl *ctrl_data, int32_t bt_type) {
     btns = ctrl_data->btns[0].value;
     prev = s->btns_prev;
 
+    /* Any new button press counts as activity (wakes the OLED / restarts the idle timer).
+       Sent before the combos below so SAVER_ENTER / MENU_ENTER still win. */
+    if (btns & ~prev) {
+        ui_event(UI_EVT_ACTIVITY);
+    }
+
     home = !!(btns & BIT(PAD_MM));
     start = !!(btns & BIT(PAD_MT));
     share = !!(btns & BIT(PAD_MS));
@@ -179,20 +181,24 @@ void shortcut_hdl(struct wired_ctrl *ctrl_data, int32_t bt_type) {
         sys_mgr_cmd(SYS_MGR_CMD_PWR_OFF);
     }
 
-    /* --- Home + Start: pairing toggle (fixed) --- */
-    if (home && start && !(prev & BIT(PAD_MT)) && combo_ready(s, now)) {
+    /* --- Home + Start: pairing toggle (fixed) ---
+       Edge triggered on whichever of the two buttons goes down last, so pressing them
+       together or in either order works. combo_last only blocks repeats. */
+    if (combo_pressed(btns, prev, BIT(PAD_MM) | BIT(PAD_MT)) &&
+        (now - s->combo_last) >= COMBO_RETRY_SKIP_MS) {
         printf("# SHORTCUT: Home+Start -> BT inquiry toggle\n");
-        s->home_t0 = now;   /* Block repeats + keep the 3 s hold from firing */
+        s->combo_last = now;
         s->home_fired_hold = 1;
         sys_mgr_cmd(SYS_MGR_CMD_INQ_TOOGLE);
     }
 
     /* --- Home + Share: disconnect this pad (fixed) --- */
-    if (home && share && !(prev & BIT(PAD_MS)) && combo_ready(s, now)) {
+    if (combo_pressed(btns, prev, BIT(PAD_MM) | BIT(PAD_MS)) &&
+        (now - s->combo_last) >= COMBO_RETRY_SKIP_MS) {
         struct bt_dev *device = NULL;
 
         printf("# SHORTCUT: Home+Share -> disconnect pad\n");
-        s->home_t0 = now;
+        s->combo_last = now;
         s->home_fired_hold = 1;
         if (bt_host_get_active_dev_from_out_idx(ctrl_data->index, &device) == 0 && device) {
             bt_host_reset_dev(device);

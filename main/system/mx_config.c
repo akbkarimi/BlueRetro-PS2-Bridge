@@ -6,6 +6,8 @@
 #include <nvs.h>
 #include <nvs_flash.h>
 #include <esp_timer.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 
 #include "mx_config.h"
 
@@ -21,6 +23,11 @@ static struct mx_time_cfg time_now;     /* Scratch returned by mx_cfg_time() */
 static struct mx_features_cfg features_cfg;
 static struct mx_keys_cfg keys_cfg;
 static struct mx_mac_cfg mac_cfg;
+
+/* The BLE task writes these structs, the UI task and the system manager read them
+   (and the manager saves them to NVS). Every access to the shared state below goes
+   through this lock; the long NVS I/O itself runs outside of it. */
+static portMUX_TYPE mx_mux = portMUX_INITIALIZER_UNLOCKED;
 
 /* ---------------- Software clock (no RTC on the board) ----------------
    The WebApp writes the wall time once; from then on the clock follows
@@ -49,16 +56,24 @@ static bool time_valid(const struct mx_time_cfg *t)
 
 static void time_current(struct mx_time_cfg *out)
 {
-    int64_t mins = (esp_timer_get_time() / 1000 - time_set_ms) / 60000;
+    struct mx_time_cfg base;
+    int64_t set_ms;
 
-    *out = time_cfg;
-    if (mins <= 0 || !time_valid(&time_cfg)) {
+    portENTER_CRITICAL(&mx_mux);
+    base = time_cfg;
+    set_ms = time_set_ms;
+    portEXIT_CRITICAL(&mx_mux);
+
+    int64_t mins = (esp_timer_get_time() / 1000 - set_ms) / 60000;
+
+    *out = base;
+    if (mins <= 0 || !time_valid(&base)) {
         return;
     }
 
-    uint64_t total = (uint64_t)time_cfg.hour * 60U + time_cfg.minute + (uint64_t)mins;
+    uint64_t total = (uint64_t)base.hour * 60U + base.minute + (uint64_t)mins;
     uint64_t days = total / 1440U;
-    unsigned y = time_cfg.year, m = time_cfg.month, d = time_cfg.day;
+    unsigned y = base.year, m = base.month, d = base.day;
 
     total %= 1440U;
     out->hour = (uint8_t)(total / 60U);
@@ -232,56 +247,70 @@ static int64_t mx_save_req_ms = 0;
 
 static void mx_config_request_save(uint8_t slot) {
     if (slot < MX_SLOT_LAST) {
+        portENTER_CRITICAL(&mx_mux);
         mx_dirty_slots |= (uint16_t)(1U << slot);
         mx_save_req_ms = esp_timer_get_time() / 1000;
+        portEXIT_CRITICAL(&mx_mux);
     }
 }
 
-void mx_config_flush(void) {
-    if (!mx_dirty_slots) {
-        return;
-    }
+/* Store a validated slot and mark it dirty as one step (data first, then the request) */
+static void mx_commit(uint8_t slot, void *dst, const void *src, size_t n) {
+    portENTER_CRITICAL(&mx_mux);
+    memcpy(dst, src, n);
+    mx_dirty_slots |= (uint16_t)(1U << slot);
+    mx_save_req_ms = esp_timer_get_time() / 1000;
+    portEXIT_CRITICAL(&mx_mux);
+}
 
+void mx_config_flush(void) {
+    struct mx_audio_cfg a;
+    struct mx_oled_cfg o;
+    struct mx_led_cfg l;
+    struct mx_idle_cfg i;
+    struct mx_features_cfg f;
+    struct mx_keys_cfg k;
+    struct mx_mac_cfg m;
+    uint16_t dirty;
     int64_t now = esp_timer_get_time() / 1000;
 
-    if (now - mx_save_req_ms < 1500) {
-        return;                     /* Debounce: wait for writes to settle */
+    portENTER_CRITICAL(&mx_mux);
+    dirty = mx_dirty_slots;
+    if (!dirty || now - mx_save_req_ms < 1500) {    /* Debounce: wait for writes to settle */
+        portEXIT_CRITICAL(&mx_mux);
+        return;
     }
+    mx_dirty_slots = 0;
+    a = audio_cfg;
+    o = oled_cfg;
+    l = led_cfg;
+    i = idle_cfg;
+    f = features_cfg;
+    k = keys_cfg;
+    m = mac_cfg;
+    portEXIT_CRITICAL(&mx_mux);
 
-    if (mx_dirty_slots & (1U << MX_SLOT_AUDIO)) {
-        if (mx_nvs_save("audio", &audio_cfg, sizeof(audio_cfg))) {
-            mx_dirty_slots &= (uint16_t)~(1U << MX_SLOT_AUDIO);
-        }
+    /* A failed save re-arms the slot (and the debounce), it does not retry in a tight loop */
+    if ((dirty & (1U << MX_SLOT_AUDIO)) && !mx_nvs_save("audio", &a, sizeof(a))) {
+        mx_config_request_save(MX_SLOT_AUDIO);
     }
-    if (mx_dirty_slots & (1U << MX_SLOT_OLED)) {
-        if (mx_nvs_save("oled", &oled_cfg, sizeof(oled_cfg))) {
-            mx_dirty_slots &= (uint16_t)~(1U << MX_SLOT_OLED);
-        }
+    if ((dirty & (1U << MX_SLOT_OLED)) && !mx_nvs_save("oled", &o, sizeof(o))) {
+        mx_config_request_save(MX_SLOT_OLED);
     }
-    if (mx_dirty_slots & (1U << MX_SLOT_LED)) {
-        if (mx_nvs_save("led", &led_cfg, sizeof(led_cfg))) {
-            mx_dirty_slots &= (uint16_t)~(1U << MX_SLOT_LED);
-        }
+    if ((dirty & (1U << MX_SLOT_LED)) && !mx_nvs_save("led", &l, sizeof(l))) {
+        mx_config_request_save(MX_SLOT_LED);
     }
-    if (mx_dirty_slots & (1U << MX_SLOT_IDLE)) {
-        if (mx_nvs_save("idle", &idle_cfg, sizeof(idle_cfg))) {
-            mx_dirty_slots &= (uint16_t)~(1U << MX_SLOT_IDLE);
-        }
+    if ((dirty & (1U << MX_SLOT_IDLE)) && !mx_nvs_save("idle", &i, sizeof(i))) {
+        mx_config_request_save(MX_SLOT_IDLE);
     }
-    if (mx_dirty_slots & (1U << MX_SLOT_FEATURES)) {
-        if (mx_nvs_save("feat", &features_cfg, sizeof(features_cfg))) {
-            mx_dirty_slots &= (uint16_t)~(1U << MX_SLOT_FEATURES);
-        }
+    if ((dirty & (1U << MX_SLOT_FEATURES)) && !mx_nvs_save("feat", &f, sizeof(f))) {
+        mx_config_request_save(MX_SLOT_FEATURES);
     }
-    if (mx_dirty_slots & (1U << MX_SLOT_KEYS)) {
-        if (mx_nvs_save("keys", &keys_cfg, sizeof(keys_cfg))) {
-            mx_dirty_slots &= (uint16_t)~(1U << MX_SLOT_KEYS);
-        }
+    if ((dirty & (1U << MX_SLOT_KEYS)) && !mx_nvs_save("keys", &k, sizeof(k))) {
+        mx_config_request_save(MX_SLOT_KEYS);
     }
-    if (mx_dirty_slots & (1U << MX_SLOT_MAC)) {
-        if (mx_nvs_save("mac", &mac_cfg, sizeof(mac_cfg))) {
-            mx_dirty_slots &= (uint16_t)~(1U << MX_SLOT_MAC);
-        }
+    if ((dirty & (1U << MX_SLOT_MAC)) && !mx_nvs_save("mac", &m, sizeof(m))) {
+        mx_config_request_save(MX_SLOT_MAC);
     }
 }
 
@@ -290,11 +319,13 @@ void mx_led_set_port_color(uint8_t port, const uint8_t rgb[3]) {
         return;
     }
 
+    portENTER_CRITICAL(&mx_mux);
     led_cfg.auto_player = 0;
     led_cfg.ports[port].r = rgb[0];
     led_cfg.ports[port].g = rgb[1];
     led_cfg.ports[port].b = rgb[2];
     led_generation++;
+    portEXIT_CRITICAL(&mx_mux);
     mx_config_request_save(MX_SLOT_LED);
 }
 
@@ -386,6 +417,7 @@ uint32_t mx_config_read_blob(uint8_t *dst, uint32_t max)
 {
     const void *src = NULL;
     uint32_t len = 0;
+    struct mx_time_cfg time_snap;
 
     switch (selected_slot) {
     case MX_SLOT_AUDIO:
@@ -409,9 +441,9 @@ uint32_t mx_config_read_blob(uint8_t *dst, uint32_t max)
         break;
 
     case MX_SLOT_TIME:
-        time_current(&time_now);
-        src = &time_now;
-        len = sizeof(time_now);
+        time_current(&time_snap);
+        src = &time_snap;
+        len = sizeof(time_snap);
         break;
 
     case MX_SLOT_FEATURES:
@@ -437,7 +469,9 @@ uint32_t mx_config_read_blob(uint8_t *dst, uint32_t max)
         return 0;
     }
 
+    portENTER_CRITICAL(&mx_mux);
     memcpy(dst, src, len);
+    portEXIT_CRITICAL(&mx_mux);
     return len;
 }
 
@@ -471,9 +505,7 @@ int32_t mx_config_write_blob(const uint8_t *src, uint32_t len)
             }
         }
 
-        mx_config_request_save(MX_SLOT_AUDIO);
-
-        audio_cfg = tmp;
+        mx_commit(MX_SLOT_AUDIO, &audio_cfg, &tmp, sizeof(tmp));
         return 0;
     }
 
@@ -491,9 +523,7 @@ int32_t mx_config_write_blob(const uint8_t *src, uint32_t len)
 
         memcpy(&tmp, src, len);
 
-        mx_config_request_save(MX_SLOT_OLED);
-
-        oled_cfg = tmp;
+        mx_commit(MX_SLOT_OLED, &oled_cfg, &tmp, sizeof(tmp));
         return 0;
     }
 
@@ -510,12 +540,13 @@ int32_t mx_config_write_blob(const uint8_t *src, uint32_t len)
             return -1;
         }
 
-        mx_config_request_save(MX_SLOT_LED);
-
+        portENTER_CRITICAL(&mx_mux);
         if (memcmp(&tmp, &led_cfg, sizeof(tmp)) != 0) {
             led_generation++;
         }
         led_cfg = tmp;
+        portEXIT_CRITICAL(&mx_mux);
+        mx_config_request_save(MX_SLOT_LED);
         return 0;
     }
 
@@ -532,9 +563,7 @@ int32_t mx_config_write_blob(const uint8_t *src, uint32_t len)
             return -1;
         }
 
-        mx_config_request_save(MX_SLOT_IDLE);
-
-        idle_cfg = tmp;
+        mx_commit(MX_SLOT_IDLE, &idle_cfg, &tmp, sizeof(tmp));
         return 0;
     }
 
@@ -549,8 +578,10 @@ int32_t mx_config_write_blob(const uint8_t *src, uint32_t len)
         if (!time_valid(&tmp)) {
             return -1;
         }
+        portENTER_CRITICAL(&mx_mux);
         time_cfg = tmp;
         time_set_ms = esp_timer_get_time() / 1000;
+        portEXIT_CRITICAL(&mx_mux);
         return 0;
     }
 
@@ -563,9 +594,7 @@ int32_t mx_config_write_blob(const uint8_t *src, uint32_t len)
 
         memcpy(&tmp, src, sizeof(tmp));
 
-        mx_config_request_save(MX_SLOT_FEATURES);
-
-        features_cfg = tmp;
+        mx_commit(MX_SLOT_FEATURES, &features_cfg, &tmp, sizeof(tmp));
         return 0;
     }
 
@@ -582,9 +611,7 @@ int32_t mx_config_write_blob(const uint8_t *src, uint32_t len)
             return -1;
         }
 
-        mx_config_request_save(MX_SLOT_KEYS);
-
-        keys_cfg = tmp;
+        mx_commit(MX_SLOT_KEYS, &keys_cfg, &tmp, sizeof(tmp));
         return 0;
     }
 
@@ -604,8 +631,7 @@ int32_t mx_config_write_blob(const uint8_t *src, uint32_t len)
             return -1;
         }
 
-        mx_config_request_save(MX_SLOT_MAC);
-        mac_cfg = tmp;
+        mx_commit(MX_SLOT_MAC, &mac_cfg, &tmp, sizeof(tmp));
         return 0;
     }
 
@@ -635,10 +661,33 @@ const struct mx_idle_cfg *mx_cfg_idle(void)
     return &idle_cfg;
 }
 
+/* UI task only: returns a scratch buffer. Other tasks use mx_cfg_time_get(). */
 const struct mx_time_cfg *mx_cfg_time(void)
 {
     time_current(&time_now);
     return &time_now;
+}
+
+void mx_cfg_time_get(struct mx_time_cfg *out)
+{
+    if (out) {
+        time_current(out);
+    }
+}
+
+void mx_cfg_ui_snapshot(struct mx_audio_cfg *a, struct mx_oled_cfg *o, struct mx_idle_cfg *i)
+{
+    portENTER_CRITICAL(&mx_mux);
+    if (a) {
+        *a = audio_cfg;
+    }
+    if (o) {
+        *o = oled_cfg;
+    }
+    if (i) {
+        *i = idle_cfg;
+    }
+    portEXIT_CRITICAL(&mx_mux);
 }
 
 const struct mx_features_cfg *mx_cfg_features(void)
@@ -659,7 +708,9 @@ const struct mx_mac_cfg *mx_cfg_mac(void)
 void mx_cfg_set_time(const struct mx_time_cfg *t)
 {
     if (t && time_valid(t)) {
+        portENTER_CRITICAL(&mx_mux);
         time_cfg = *t;
         time_set_ms = esp_timer_get_time() / 1000;
+        portEXIT_CRITICAL(&mx_mux);
     }
 }

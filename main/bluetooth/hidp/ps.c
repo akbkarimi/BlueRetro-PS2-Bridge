@@ -10,6 +10,7 @@
 #include "adapter/config.h"
 #include "bluetooth/host.h"
 #include "system/ui.h"
+#include "system/manager.h"
 #include "ps.h"
 
 static void bt_hid_cmd_ps5_set_conf(struct bt_dev *device, void *report);
@@ -17,9 +18,11 @@ static void bt_hid_cmd_ps4_set_conf(struct bt_dev *device, void *report);
 
 /* ---------------- Lightbar connect flash (red -> orange -> color) ----------------
  *
- * At pad init we start a short esp_timer that re-sends the lightbar color while
- * the UI flash is active, then sends the final color once and stops. Sending HID
- * from the esp_timer context mirrors what the DS4 init timer already does.
+ * At pad init we start a short esp_timer that keeps asking for the lightbar color to be
+ * re-sent while the UI flash is active, then asks once more (final color) and stops.
+ * The timer only raises a request: the system manager task turns it into a feedback
+ * item and the BT feedback task sends it. The timer therefore never touches the
+ * struct bt_dev (it may be gone) nor the shared bt_hci_pkt_tmp buffer.
  */
 
 #define PS_FLASH_PERIOD_US  (150 * 1000)
@@ -27,55 +30,21 @@ static void bt_hid_cmd_ps4_set_conf(struct bt_dev *device, void *report);
 
 struct ps_flash {
     esp_timer_handle_t hdl;
-    struct bt_dev *device;
+    uint8_t out_idx;
 };
 
 static struct ps_flash ps_flashes[PS_FLASH_MAX_IDX];
 
-static void bt_hid_ps_flash_send(struct bt_dev *device, uint32_t rgb) {
-    if (device->ids.subtype == BT_PS5_DS) {
-        struct bt_hidp_ps5_set_conf conf = {
-            .conf0 = 0x02,
-            .cmd = 0x03,
-            .conf1 = 0x04,
-        };
-
-        conf.leds = rgb;
-        bt_hid_cmd_ps5_set_conf(device, (void *)&conf);
-    }
-    else {
-        struct bt_hidp_ps4_set_conf conf = {
-            .conf0 = 0xc4,
-            .conf1 = 0x03,
-        };
-
-        conf.leds = rgb;
-        bt_hid_cmd_ps4_set_conf(device, (void *)&conf);
-    }
-}
-
 static void bt_hid_ps_flash_tick(void *arg) {
     struct ps_flash *f = (struct ps_flash *)arg;
-    struct bt_dev *device = f->device;
     uint32_t rgb = 0;
+    bool active = ui_color_flash_get(f->out_idx, &rgb);
 
-    if (device == NULL) {
-        return;
-    }
-
-    if (ui_color_flash_get(device->ids.out_idx, &rgb)) {
-        /* Apply configured brightness to temporary connect-flash colors too. */
-        bt_hid_ps_flash_send(device, ps_ctrl_color_get(device->ids.out_idx));
-    }
-    else {
-        /* Flash over: restore the configured color and stop */
-        bt_hid_ps_flash_send(device, ps_ctrl_color_get(device->ids.out_idx));
-        if (f->hdl) {
-            esp_timer_stop(f->hdl);
-            esp_timer_delete(f->hdl);
-            f->hdl = NULL;
-        }
-        f->device = NULL;
+    manager_request_pad_led(f->out_idx);    /* Flash color while active, configured color at the end */
+    if (!active && f->hdl) {
+        esp_timer_stop(f->hdl);
+        esp_timer_delete(f->hdl);
+        f->hdl = NULL;
     }
 }
 
@@ -101,13 +70,12 @@ static void bt_hid_ps_flash_start(struct bt_dev *device) {
 
     ui_color_flash_start((uint8_t)idx);
 
+    f->out_idx = (uint8_t)idx;
     if (esp_timer_create(&args, &f->hdl) == ESP_OK) {
-        f->device = device;
         esp_timer_start_periodic(f->hdl, PS_FLASH_PERIOD_US);
     }
     else {
         f->hdl = NULL;
-        f->device = NULL;
         ui_color_flash_stop((uint8_t)idx);
     }
 }

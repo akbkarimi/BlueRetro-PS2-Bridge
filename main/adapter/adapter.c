@@ -312,7 +312,7 @@ static void adapter_fb_stop_cb(void* arg) {
     rumble_mute = false;
 
     /* Send 0 byte data, system that require callback stop shall look for that */
-    adapter_q_fb(&fb_data);
+    adapter_q_fb_sys(&fb_data);
 }
 
 uint32_t adapter_get_out_mask(uint8_t dev_id) {
@@ -595,6 +595,23 @@ int32_t IRAM_ATTR adapter_q_fb(struct raw_fb *fb_data) {
     return queue_bss_enqueue(wired_adapter.input_q_hdl, (uint8_t *)fb_data, sizeof(*fb_data));
 }
 
+/* queue_bss is single producer / single consumer. Task level producers (system manager,
+   esp_timer task, boot code) all share this second queue and are serialized here. */
+static portMUX_TYPE sys_q_mux = portMUX_INITIALIZER_UNLOCKED;
+
+int32_t adapter_q_fb_sys(struct raw_fb *fb_data) {
+    int32_t ret;
+
+    if (rumble_mute) {
+        return -1;
+    }
+
+    portENTER_CRITICAL(&sys_q_mux);
+    ret = queue_bss_enqueue(wired_adapter.sys_q_hdl, (uint8_t *)fb_data, sizeof(*fb_data));
+    portEXIT_CRITICAL(&sys_q_mux);
+    return ret;
+}
+
 void adapter_toggle_fb(uint32_t wired_id, uint32_t duration_us, uint8_t lf_pwr, uint8_t hf_pwr) {
     struct bt_dev *device = NULL;
     struct bt_data *bt_data = NULL;
@@ -640,6 +657,10 @@ void adapter_init(void) {
     wired_adapter.input_q_hdl = queue_bss_init(16, sizeof(struct raw_fb));
     if (wired_adapter.input_q_hdl == NULL) {
         ets_printf("# %s: Failed to create fb queue\n", __FUNCTION__);
+    }
+    wired_adapter.sys_q_hdl = queue_bss_init(16, sizeof(struct raw_fb));
+    if (wired_adapter.sys_q_hdl == NULL) {
+        ets_printf("# %s: Failed to create sys fb queue\n", __FUNCTION__);
     }
 }
 

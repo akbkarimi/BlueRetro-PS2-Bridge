@@ -26,5 +26,6 @@ void sys_mgr_init(uint32_t package);
    ps_ctrl_color_get() and shows the current lightbar color. Safe to call
    from any task (best effort, drops on a full queue). */
 void manager_send_pad_colors(void);
+void manager_request_pad_led(uint8_t out_idx);
 
 #endif /* _SYS_MANAGER_H_ */
