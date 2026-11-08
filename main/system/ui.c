@@ -1358,6 +1358,7 @@ static void ui_task(void *param) {
 }
 
 void ui_init(void) {
+    memset(battery_pct, 0xFF, sizeof(battery_pct));   /* 0xFF = unknown (was 0 => showed 0%) */
     ui_q = xQueueCreate(8, sizeof(ui_msg_t));
     if (ui_q == NULL) {
         return;
@@ -1450,44 +1451,49 @@ uint32_t ui_pad_color_generation(void) {
 #define SWIPE_X_MIN 500     /* Touchpad is 1920 x 942 units: about a quarter of each axis */
 #define SWIPE_Y_MIN 250
 
-static struct {
+/* One gesture tracker per pad. A single shared tracker let the idle pad's reports
+   (valid, no finger) end the other pad's swipe and re-target it. */
+struct touch_state {
     bool down;
     bool click;
     int x0, y0, x, y;
-    uint8_t src;            /* out_idx of the pad feeding the touch */
-} touch;
+};
+static struct touch_state touch[UI_BATT_PORTS];
 
 void ui_touch_feed(uint8_t valid, uint8_t down, uint16_t x, uint16_t y, uint8_t click, uint8_t src_port) {
-    if (src_port != 0xFF) {
-        touch.src = src_port;
+    if (src_port >= UI_BATT_PORTS) {
+        return;                         /* Pad not mapped to a port: nothing to target */
     }
-    if (click && !touch.click) {
+
+    struct touch_state *tp = &touch[src_port];
+
+    if (click && !tp->click) {
         ui_event(UI_EVT_ACTIVITY);      /* Pressing the touchpad wakes the display / leaves a screensaver */
     }
-    touch.click = click;
+    tp->click = click;
     if (!valid) {
         return;
     }
     if (down) {
-        if (!touch.down) {
-            touch.down = true;
-            touch.x0 = x;
-            touch.y0 = y;
+        if (!tp->down) {
+            tp->down = true;
+            tp->x0 = x;
+            tp->y0 = y;
         }
-        touch.x = x;
-        touch.y = y;
+        tp->x = x;
+        tp->y = y;
         return;
     }
-    if (!touch.down) {
+    if (!tp->down) {
         return;
     }
-    touch.down = false;
+    tp->down = false;
 
-    int dx = touch.x - touch.x0;
-    int dy = touch.y - touch.y0;
+    int dx = tp->x - tp->x0;
+    int dy = tp->y - tp->y0;
     int ax = abs(dx);
     int ay = abs(dy);
-    ui_msg_t msg = { .evt = UI_EVT_TOUCH_SWIPE, .val = 0, .val2 = touch.src };
+    ui_msg_t msg = { .evt = UI_EVT_TOUCH_SWIPE, .val = 0, .val2 = src_port };
 
     if (ax >= SWIPE_X_MIN && ax > 2 * ay) {
         msg.val = (dx > 0) ? UI_SWIPE_RIGHT : UI_SWIPE_LEFT;
@@ -1642,6 +1648,13 @@ uint8_t ui_battery_get(uint8_t out_idx) {
     return (out_idx < UI_BATT_PORTS) ? battery_pct[out_idx] : 0xFF;
 }
 
+void ui_pad_disconnected(uint8_t out_idx) {
+    if (out_idx < UI_BATT_PORTS) {
+        battery_pct[out_idx] = 0xFF;
+        memset(&touch[out_idx], 0, sizeof(touch[out_idx]));
+    }
+}
+
 /* Push the MX config slots into the UI/audio settings.
    Called after boot (main.c) and after every MX slot write from BLE (att_cfg.c). */
 void ui_mx_apply(void) {
@@ -1736,5 +1749,6 @@ void ui_color_flash_stop(uint8_t out_idx) { (void)out_idx; }
 bool ui_color_flash_get(uint8_t out_idx, uint32_t *rgb) { (void)out_idx; (void)rgb; return false; }
 void ui_battery_set(uint8_t out_idx, uint8_t percent) { (void)out_idx; (void)percent; }
 uint8_t ui_battery_get(uint8_t out_idx) { (void)out_idx; return 0xFF; }
+void ui_pad_disconnected(uint8_t out_idx) { (void)out_idx; }
 
 #endif

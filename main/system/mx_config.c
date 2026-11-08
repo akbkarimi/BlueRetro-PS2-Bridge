@@ -15,10 +15,68 @@ static struct mx_audio_cfg audio_cfg;
 static struct mx_oled_cfg oled_cfg;
 static struct mx_led_cfg led_cfg;
 static struct mx_idle_cfg idle_cfg;
-static struct mx_time_cfg time_cfg;
+static struct mx_time_cfg time_cfg;     /* Last time set (boot default or WebApp) */
+static int64_t time_set_ms;             /* esp_timer ms when time_cfg was set */
+static struct mx_time_cfg time_now;     /* Scratch returned by mx_cfg_time() */
 static struct mx_features_cfg features_cfg;
 static struct mx_keys_cfg keys_cfg;
 static struct mx_mac_cfg mac_cfg;
+
+/* ---------------- Software clock (no RTC on the board) ----------------
+   The WebApp writes the wall time once; from then on the clock follows
+   esp_timer. It restarts at the boot default after every power cycle, so the
+   WebApp has to sync it again. */
+
+static bool time_leap(unsigned y)
+{
+    return ((y % 4U) == 0U && (y % 100U) != 0U) || (y % 400U) == 0U;
+}
+
+static unsigned time_days_in_month(unsigned y, unsigned m)
+{
+    static const uint8_t dim[12] = { 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
+
+    return (m == 2U && time_leap(y)) ? 29U : dim[(m - 1U) % 12U];
+}
+
+static bool time_valid(const struct mx_time_cfg *t)
+{
+    return t->year >= 2000 && t->year <= 2199 &&
+           t->month >= 1 && t->month <= 12 &&
+           t->day >= 1 && t->day <= time_days_in_month(t->year, t->month) &&
+           t->hour < 24 && t->minute < 60;
+}
+
+static void time_current(struct mx_time_cfg *out)
+{
+    int64_t mins = (esp_timer_get_time() / 1000 - time_set_ms) / 60000;
+
+    *out = time_cfg;
+    if (mins <= 0 || !time_valid(&time_cfg)) {
+        return;
+    }
+
+    uint64_t total = (uint64_t)time_cfg.hour * 60U + time_cfg.minute + (uint64_t)mins;
+    uint64_t days = total / 1440U;
+    unsigned y = time_cfg.year, m = time_cfg.month, d = time_cfg.day;
+
+    total %= 1440U;
+    out->hour = (uint8_t)(total / 60U);
+    out->minute = (uint8_t)(total % 60U);
+
+    while (days--) {
+        if (++d > time_days_in_month(y, m)) {
+            d = 1;
+            if (++m > 12U) {
+                m = 1;
+                y++;
+            }
+        }
+    }
+    out->year = (uint16_t)y;
+    out->month = (uint8_t)m;
+    out->day = (uint8_t)d;
+}
 
 static uint8_t selected_slot = MX_SLOT_AUDIO;
 static uint32_t led_generation = 1;     /* Bumped on every LED slot change */
@@ -104,6 +162,7 @@ static void mx_config_defaults(void)
     time_cfg.day = 1;
     time_cfg.hour = 12;
     time_cfg.minute = 0;
+    time_set_ms = esp_timer_get_time() / 1000;
 
     features_cfg.bits = 0x7F;
 
@@ -350,8 +409,9 @@ uint32_t mx_config_read_blob(uint8_t *dst, uint32_t max)
         break;
 
     case MX_SLOT_TIME:
-        src = &time_cfg;
-        len = sizeof(time_cfg);
+        time_current(&time_now);
+        src = &time_now;
+        len = sizeof(time_now);
         break;
 
     case MX_SLOT_FEATURES:
@@ -486,7 +546,11 @@ int32_t mx_config_write_blob(const uint8_t *src, uint32_t len)
         }
 
         memcpy(&tmp, src, sizeof(tmp));
+        if (!time_valid(&tmp)) {
+            return -1;
+        }
         time_cfg = tmp;
+        time_set_ms = esp_timer_get_time() / 1000;
         return 0;
     }
 
@@ -573,7 +637,8 @@ const struct mx_idle_cfg *mx_cfg_idle(void)
 
 const struct mx_time_cfg *mx_cfg_time(void)
 {
-    return &time_cfg;
+    time_current(&time_now);
+    return &time_now;
 }
 
 const struct mx_features_cfg *mx_cfg_features(void)
@@ -593,7 +658,8 @@ const struct mx_mac_cfg *mx_cfg_mac(void)
 
 void mx_cfg_set_time(const struct mx_time_cfg *t)
 {
-    if (t) {
+    if (t && time_valid(t)) {
         time_cfg = *t;
+        time_set_ms = esp_timer_get_time() / 1000;
     }
 }

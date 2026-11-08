@@ -472,7 +472,16 @@ static void wired_port_hdl(void) {
     }
 }
 
+/* adapter_q_fb() feeds a single-producer queue (queue_bss). The UI task and the BLE
+   config task used to call it directly, racing with this task and the wired side.
+   They now only raise a flag; sys_mgr_task does the actual enqueue. */
+static volatile uint8_t pad_colors_req = 0;
+
 void manager_send_pad_colors(void) {
+    pad_colors_req = 1;
+}
+
+static void manager_do_send_pad_colors(void) {
     for (int32_t i = 0; i < BT_MAX_DEV; i++) {
         struct bt_dev *device = NULL;
 
@@ -588,6 +597,11 @@ static void sys_mgr_task(void *arg) {
                 }
                 vRingbufferReturnItem(cmd_q_hdl, (void *)cmd);
             }
+        }
+
+        if (pad_colors_req) {
+            pad_colors_req = 0;
+            manager_do_send_pad_colors();
         }
 
         mx_config_flush();
@@ -968,5 +982,5 @@ void sys_mgr_init(uint32_t package) {
 #endif
 #endif /* CONFIG_BLUERETRO_HW2 */
 
-    xTaskCreatePinnedToCore(sys_mgr_task, "sys_mgr_task", 2048, NULL, 5, NULL, 0);
+    xTaskCreatePinnedToCore(sys_mgr_task, "sys_mgr_task", 3072, NULL, 5, NULL, 0);   /* NVS commits run here now */
 }

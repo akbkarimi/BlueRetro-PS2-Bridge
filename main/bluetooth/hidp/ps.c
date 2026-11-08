@@ -337,13 +337,19 @@ void bt_hid_ps_hdlr(struct bt_dev *device, struct bt_hci_pkt *bt_hci_acl_pkt, ui
                         bt_type_update(device->ids.id, BT_PS, BT_SUBTYPE_DEFAULT);
                         device->ids.report_type = BT_HIDP_PS4_STATUS;
                     }
-                    /* DS4 battery: payload byte 29 (full report byte 30),
-                       HIGH nibble = level 0..10 (low nibble = charging state). */
-                    if (hidp_data_len > 29) {
-                        uint8_t n = (bt_hci_acl_pkt->hidp_data[29] >> 4) & 0x0F;
-
-                        ui_battery_set((uint8_t)device->ids.out_idx,
-                            (n > 10) ? 100 : (uint8_t)(n * 10));
+                    /* DS4 battery. hidp_data starts after the report ID, so the
+                       status byte sits at payload[31] (the touch parser reads the
+                       same buffer: touch count = payload[34]). Bits 0-3 = level
+                       (0..8 on battery, 0..11 while charging), bit 4 = USB cable. */
+                    if (hidp_data_len > 31) {
+                        uint8_t st = bt_hci_acl_pkt->hidp_data[31];
+                        uint8_t lvl = st & 0x0F;
+                        uint8_t pct = (st & 0x10) ? ((lvl >= 11) ? 100 : (uint8_t)(lvl * 100 / 11))
+                                                  : ((lvl >= 8)  ? 100 : (uint8_t)(lvl * 100 / 8));
+#ifdef BR_DEBUG_DS4_BATT
+                        printf("# DS4 status byte %02X -> %u%%\n", st, pct);
+#endif
+                        ui_battery_set((uint8_t)device->ids.out_idx, pct);
                     }
 #ifdef CONFIG_BLUERETRO_ADAPTER_RUMBLE_TEST
                     struct bt_hidp_ps4_set_conf rumble4 = {

@@ -27,6 +27,8 @@
 #include "mon.h"
 #include "system/fs.h"
 #include "system/mx_config.h"
+#include "system/ui.h"
+#include "adapter/shortcut.h"
 #include "adapter/config.h"
 #include "adapter/gameid.h"
 #include "adapter/memory_card.h"
@@ -721,6 +723,8 @@ reset_dev:
     int32_t out_idx = device->ids.out_idx;
     if (out_idx >= 0 && out_idx < WIRED_MAX_DEV) {
         adapter_reset_controller_state((uint8_t)out_idx);
+        shortcut_reset((uint8_t)out_idx);
+        ui_pad_disconnected((uint8_t)out_idx);
     }
 
     adapter_init_buffer(dev_id);

@@ -127,6 +127,8 @@ bool ui_color_flash_get(uint8_t out_idx, uint32_t *rgb);
    Backed by the battery data the firmware collects (BAS read / status report). */
 void ui_battery_set(uint8_t out_idx, uint8_t percent);
 uint8_t ui_battery_get(uint8_t out_idx);
+/* Pad left: forget its battery value and any half-finished touch gesture. */
+void ui_pad_disconnected(uint8_t out_idx);
 
 bool ui_audio_preview(uint8_t melody);
 bool ui_audio_preview_stop(void);

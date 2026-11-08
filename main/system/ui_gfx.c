@@ -256,9 +256,9 @@ static void seg_draw_digit(int x, int y, int w, int h, int digit) {
     if (seg & 0x40) gfx_fill_rect(x + t, mid, w - 2 * t, t, 1);             /* G */
     if (seg & 0x08) gfx_fill_rect(x + t, y + h - t, w - 2 * t, t, 1);       /* D */
     if (seg & 0x02) gfx_fill_rect(x + w - t, y + t, t, mid - y - t, 1);     /* B */
-    if (seg & 0x10) gfx_fill_rect(x + w - t, mid + t, t, y + h - mid - 2 * t, 1); /* C */
+    if (seg & 0x04) gfx_fill_rect(x + w - t, mid + t, t, y + h - mid - 2 * t, 1); /* C (bit 2) */
     if (seg & 0x20) gfx_fill_rect(x, y + t, t, mid - y - t, 1);             /* F */
-    if (seg & 0x04) gfx_fill_rect(x, mid + t, t, y + h - mid - 2 * t, 1);   /* E */
+    if (seg & 0x10) gfx_fill_rect(x, mid + t, t, y + h - mid - 2 * t, 1);   /* E (bit 4) */
 }
 
 void gfx_big_num(int x, int y, int w, int h, int value) {

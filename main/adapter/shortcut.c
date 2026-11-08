@@ -152,7 +152,7 @@ void shortcut_hdl(struct wired_ctrl *ctrl_data, int32_t bt_type) {
         uint32_t held = now - s->home_t0;
 
         s->home_down = 0;
-        if (held < HOME_MAX_TAP_MS) {
+        if (!s->home_fired_hold && held < HOME_MAX_TAP_MS) {
             if (s->home_short_tap && (now - s->home_last_release) < HOME_DOUBLE_GAP_MS) {
                 /* Double tap Home: console reset */
                 printf("# SHORTCUT: Home double tap -> console reset\n");
