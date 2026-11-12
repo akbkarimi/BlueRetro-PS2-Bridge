@@ -1,7 +1,7 @@
 'use client'
 
 /**
- * BlueRetro MethyleneX WebApp v2 — shell: connect screen with Web Bluetooth
+ * BlueRetro PS2 Bridge WebApp v2 — shell: connect screen with Web Bluetooth
  * support detection, bilingual EN/FA navigation, page routing.
  * The virtual ESP32 simulator has been removed — real device only.
  */
@@ -34,15 +34,15 @@ import { HelpPage } from './pages/HelpPage'
 import { ControllerTestPage } from './pages/ControllerTestPage'
 import { MacSpoofPage } from './pages/MacSpoofPage'
 
-const NAV: { id: PageId; icon: React.ComponentType<{ className?: string }>; key: DictKey; methylene?: boolean }[] = [
+const NAV: { id: PageId; icon: React.ComponentType<{ className?: string }>; key: DictKey; bridge?: boolean }[] = [
   { id: 'home', icon: House, key: 'home' },
-  { id: 'display', icon: MonitorSmartphone, key: 'display', methylene: true },
-  { id: 'sound', icon: Music, key: 'sound', methylene: true },
-  { id: 'colors', icon: Palette, key: 'colors', methylene: true },
-  { id: 'shortcuts', icon: Zap, key: 'shortcuts', methylene: true },
-  { id: 'ports', icon: Radio, key: 'ports', methylene: true },
-  { id: 'controller-test', icon: Gamepad2, key: 'controllerTest', methylene: true },
-  { id: 'macspoof', icon: Shield, key: 'macSpoof', methylene: true },
+  { id: 'display', icon: MonitorSmartphone, key: 'display', bridge: true },
+  { id: 'sound', icon: Music, key: 'sound', bridge: true },
+  { id: 'colors', icon: Palette, key: 'colors', bridge: true },
+  { id: 'shortcuts', icon: Zap, key: 'shortcuts', bridge: true },
+  { id: 'ports', icon: Radio, key: 'ports', bridge: true },
+  { id: 'controller-test', icon: Gamepad2, key: 'controllerTest', bridge: true },
+  { id: 'macspoof', icon: Shield, key: 'macSpoof', bridge: true },
   { id: 'advance', icon: Settings2, key: 'advance' },
   { id: 'system', icon: Cpu, key: 'system' },
   { id: 'reference', icon: Table2, key: 'reference' },
@@ -88,7 +88,7 @@ function ConnectScreen() {
         <div className="w-20 h-20 rounded-2xl bg-[var(--mx-logo)] flex items-center justify-center shadow-[0_0_40px_rgba(30,110,201,0.35)]">
           <Gamepad2 className="h-11 w-11 text-sky-300" />
         </div>
-        <h1 className="text-3xl font-bold tracking-tight">BlueRetro MethyleneX</h1>
+        <h1 className="text-3xl font-bold tracking-tight">BlueRetro PS2 Bridge</h1>
         <p className="text-muted-foreground max-w-md">{t('tagline')}</p>
       </div>
 
@@ -117,22 +117,23 @@ function ConnectScreen() {
           {error && (
             <p className="text-sm text-red-400 text-center">
               {error === 'NO_DEVICE_SELECTED' ? t('noDeviceSelected')
+                : error === 'INCOMPATIBLE_DEVICE' ? t('incompatibleDevice')
                 : error === 'connection-lost' ? t('connectionLost')
                 : error === 'WEB_BT_MISSING' ? t('btMissing')
                 : error === 'BT_SECURITY' ? (lang === 'fa'
                   ? 'اتصال به سرویس بلوتوث مسدود شد — صفحه را با localhost یا HTTPS باز کنید.'
                   : 'Bluetooth service blocked — open the page over localhost or HTTPS.')
                 : error === 'BT_SERVICE' ? (lang === 'fa'
-                  ? 'سرویس BlueRetro روی دستگاه پیدا نشد — مطمئن شوید فیرم‌ور MethyleneX فلش شده و دستگاه روشن است.'
-                  : 'BlueRetro service not found — make sure the MethyleneX firmware is flashed and the device is on.')
+                  ? 'سرویس BlueRetro PS2 Bridge روی دستگاه پیدا نشد — مطمئن شوید فریمور BlueRetro PS2 Bridge فلش شده و دستگاه روشن است.'
+                  : 'BlueRetro PS2 Bridge service not found — make sure the correct firmware is flashed and the device is on.')
                 : error}
             </p>
           )}
           <Separator className="bg-zinc-800" />
           <p className="text-xs text-muted-foreground leading-5 text-center">
             {lang === 'fa'
-              ? 'دستگاه واقعی BlueRetro MethyleneX با Web Bluetooth کروم — در آدرس localhost یا HTTPS اجرا کنید.'
-              : 'Real BlueRetro MethyleneX device via Chrome Web Bluetooth — serve over localhost or HTTPS.'}
+              ? 'دستگاه واقعی BlueRetro PS2 Bridge با Web Bluetooth کروم — در آدرس localhost یا HTTPS اجرا کنید.'
+              : 'Real BlueRetro PS2 Bridge device via Chrome Web Bluetooth — serve over localhost or HTTPS.'}
           </p>
           {isAndroid && !isChrome && insecure && (
             <p className="text-xs text-amber-300 text-center">
@@ -164,7 +165,7 @@ function Shell() {
         <div className="mx-auto max-w-7xl px-4 h-14 flex items-center gap-3">
           <Gamepad2 className="h-6 w-6 text-sky-400 shrink-0" />
           <div className="min-w-0">
-            <div className="text-sm font-semibold leading-4 truncate">BlueRetro MethyleneX</div>
+            <div className="text-sm font-semibold leading-4 truncate">BlueRetro PS2 Bridge</div>
             <div className="text-[11px] text-muted-foreground truncate" dir="ltr">
               {fw} · API {api} · {bdaddr}
             </div>
@@ -202,7 +203,7 @@ function Shell() {
             >
               <n.icon className="h-4 w-4 shrink-0" />
               <span className="truncate">{t(n.key)}</span>
-              {n.methylene && <Badge className="ms-auto bg-sky-950 text-sky-300 border border-sky-900 text-[9px] px-1 py-0">MX</Badge>}
+              {n.bridge && <Badge className="ms-auto bg-sky-950 text-sky-300 border border-sky-900 text-[9px] px-1 py-0">PS2</Badge>}
             </button>
           ))}
         </nav>
@@ -235,7 +236,7 @@ function Shell() {
 
       <footer className="mt-auto border-t border-zinc-800/80 bg-[var(--mx-header)]/80">
         <div className="mx-auto max-w-7xl px-4 py-3 flex flex-wrap items-center justify-between gap-2 text-[11px] text-muted-foreground">
-          <span>BlueRetro MethyleneX WebApp v4.4 — real device config tool</span>
+          <span>BlueRetro PS2 Bridge WebApp — PS2 configuration tool</span>
           <span dir="ltr">Service 56830f56…799a00 · a01–a0e</span>
         </div>
       </footer>

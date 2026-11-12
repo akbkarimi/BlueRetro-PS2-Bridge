@@ -1,18 +1,18 @@
 # BlueRetro PS2 Bridge
 
-An ESP32-based BlueRetro firmware project configured for PlayStation 1 / PlayStation 2, with a companion browser-based configuration WebApp.
+An ESP32-based BlueRetro firmware project configured exclusively for PlayStation 2, with a companion browser-based configuration WebApp.
 
 ## Repository contents
 
 - `main/` — ESP-IDF firmware source
 - `configs/hw2/playstation` — HW2 PlayStation configuration
-- `webapp/` — Web Bluetooth configuration application (version 4.4.0)
+- `webapp/` — Web Bluetooth configuration application (version 1.0.0)
 - `shared/protocol.yaml` — shared protocol definitions, including the controller monitor and MAC configuration extensions
 - `docs/` — project and upstream documentation
 
 ## Firmware configuration
 
-The checked-in `sdkconfig.defaults` and `configs/hw2/playstation` target ESP32, HW2, and PSX / PS2, with a 4 MB flash profile. The firmware project version is `mx-v6`.
+The checked-in `sdkconfig.defaults` and `configs/hw2/playstation` lock the product to ESP32 HW2 and PlayStation 2, with a 4 MB flash profile. The firmware project identity is `BlueRetroPS2Bridge` (version `ps2b-v1.0`). Other upstream console targets are not supported by this product build.
 
 The firmware version string is retained for identification and compatibility; it is not the repository name. Always verify that the selected hardware configuration matches the actual board.
 
@@ -38,6 +38,7 @@ See [the Persian WebApp guide](webapp/README-WebApp-FA.md).
 ## Documentation
 
 - [Firmware features (Persian)](docs/FIRMWARE-FEATURES-FA.md)
+- [Hardware pinout (Persian)](docs/HARDWARE-PINOUT-FA.md)
 - [WebApp guide (Persian)](webapp/README-WebApp-FA.md)
 - [Upstream BlueRetro background](docs/UPSTREAM-BASE.md)
 - [Legacy firmware fix-pack guide](docs/LEGACY-FIRMWARE-FIXPACK-V6.md) — historical reference only; its old copy instructions are not for the current repository.

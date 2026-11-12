@@ -2,13 +2,13 @@
 
 /**
  * Advance Config — rebuilds the ORIGINAL BlueRetro web config tool page
- * (blueretro.io, repo darthcloud/BlueRetroWebCfg) on the MethyleneX
+ * (blueretro.io, repo darthcloud/BlueRetroWebCfg) on the BlueRetro PS2 Bridge
  * protocol layer. The original firmware GATT model is kept by the fork:
  *   • Config selection — global_cfg.banksel (a01[3], banks 0..3, 0xDB = debug)
  *   • Global config    — system_cfg / multitap_cfg / inquiry_mode (a01[0..2])
  *   • Output config    — out_cfg per port {dev_mode, acc_mode} (a02/a03),
  *                        incl. the rumble toggle (moved out of Colors page, v4.3)
- *   • MethyleneX extra — MX FEATURES byte (a0d slot select + a0e blob, slot 6)
+ *   • PS2 Bridge extension — MX FEATURES byte (a0d slot select + a0e blob, slot 6)
  *
  * All enum values mirror main/adapter/adapter.h + adapter/config.h of the
  * firmware (DEV_PAD=0, ACC_NONE=0, MT_NONE=0, INQ_AUTO=0, WIRED_AUTO=0 …).
@@ -21,34 +21,6 @@ import { Section, PageHeader, Row, useT, BrSelect, NotReady } from '../shared'
 import { useBr, activeBle } from '@/lib/br/store'
 import { saveSysCfg, saveFeatures, readPortMode, savePortMode, type SysCfg, type PortMode } from '@/lib/br/protocol'
 import { MX_SLOT } from '@/lib/br/constants'
-
-/* enum wired system ID (adapter.h) — value 0 = auto detect */
-const SYS_OPTIONS = [
-  { value: '0', label: '0 · Auto detect' },
-  { value: '1', label: '1 · Parallel 1P' },
-  { value: '2', label: '2 · Parallel 2P' },
-  { value: '3', label: '3 · NES' },
-  { value: '4', label: '4 · PC Engine' },
-  { value: '5', label: '5 · Genesis / Mega Drive' },
-  { value: '6', label: '6 · SNES' },
-  { value: '7', label: '7 · CD-i' },
-  { value: '8', label: '8 · CD32' },
-  { value: '9', label: '9 · 3DO' },
-  { value: '10', label: '10 · Jaguar' },
-  { value: '11', label: '11 · PlayStation' },
-  { value: '12', label: '12 · Saturn' },
-  { value: '13', label: '13 · PC-FX' },
-  { value: '14', label: '14 · JVS Arcade' },
-  { value: '15', label: '15 · N64' },
-  { value: '16', label: '16 · Dreamcast' },
-  { value: '17', label: '17 · PS2' },
-  { value: '18', label: '18 · GameCube / Wii' },
-  { value: '19', label: '19 · Wii extension' },
-  { value: '20', label: '20 · Virtual Boy' },
-  { value: '21', label: '21 · Parallel 1P (open drain)' },
-  { value: '22', label: '22 · Parallel 2P (open drain)' },
-  { value: '23', label: '23 · SEA board' },
-]
 
 const CONFIG_BANKSEL_DBG = 0xdb
 
@@ -148,7 +120,7 @@ export function AdvancePage() {
 
   const commitSys = async (patch: Partial<SysCfg>) => {
     const ble = activeBle()
-    const next = { ...sys, ...patch }
+    const next = { ...sys, ...patch, system: 17 } // PS2 is the only supported product target.
     setSys(next)
     if (!ble) return
     try {
@@ -211,14 +183,8 @@ export function AdvancePage() {
         </Section>
 
         <Section title={t('globalCfgTitle')} desc="a01[0..2]">
-          <Row label={t('systemCfg')} hint={`a01[0] = ${sys.system}`}>
-            <BrSelect
-              value={String(sys.system)}
-              onValueChange={(v) => void commitSys({ system: Number(v) })}
-              ariaLabel={t('systemCfg')}
-              className="w-56"
-              options={SYS_OPTIONS}
-            />
+          <Row label={t('systemCfg')} hint="a01[0] = 17">
+            <span className="text-sm font-medium text-sky-300">{t('ps2Only')}</span>
           </Row>
           <Row label={t('multitap')} hint={`a01[1] = ${sys.multitap}`}>
             <BrSelect

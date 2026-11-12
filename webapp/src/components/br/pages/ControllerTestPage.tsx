@@ -16,7 +16,7 @@ import { ControllerCanvas, RawBtns } from '../ControllerCanvas'
 const EMPTY: ControllerState = {
   btns: 0, lx: 0, ly: 0, rx: 0, ry: 0, l2: 0, r2: 0, valid: false,
 }
-const PORTS = [0, 1]
+const PORTS = [0, 1] /**  const PORTS = [0, 1, 2]  **/
 
 export function ControllerTestPage() {
   const t = useT()

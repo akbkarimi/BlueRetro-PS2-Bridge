@@ -5,6 +5,7 @@
  * Includes the 128×32 / 128×64 panel-height fix (applied live by the
  * firmware via gfx_set_panel_h and persisted in NVS).
  */
+import { useState } from 'react'
 import { toast } from 'sonner'
 import { RefreshCcw, Save } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -19,6 +20,14 @@ import { IDLE_MODES, OLED_PAGES } from '@/lib/br/constants'
 export function DisplayPage() {
   const t = useT()
   const lang = useBr((s) => s.lang)
+  const [manualDate, setManualDate] = useState(() => {
+    const d = new Date()
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  })
+  const [manualTime, setManualTime] = useState(() => {
+    const d = new Date()
+    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`
+  })
   const oled = useBr((s) => s.oled)
   const idle = useBr((s) => s.idle)
   const setOled = useBr((s) => s.setOled)
@@ -66,20 +75,38 @@ export function DisplayPage() {
     await commitOled({ pages })
   }
 
-  const syncClock = async () => {
+  const writeClock = async (date: string, time: string) => {
     const ble = activeBle()
     if (!ble) return
-    const now = new Date()
+    const [year, month, day] = date.split('-').map(Number)
+    const [hour, minute, second] = time.split(':').map(Number)
+    const dateCheck = new Date(year, month - 1, day)
+    if (![year, month, day, hour, minute, second].every(Number.isInteger) ||
+        year < 2000 || year > 2099 || month < 1 || month > 12 ||
+        dateCheck.getFullYear() !== year || dateCheck.getMonth() !== month - 1 ||
+        dateCheck.getDate() !== day || hour < 0 || hour > 23 ||
+        minute < 0 || minute > 59 || second < 0 || second > 59) {
+      toast.error(lang === 'fa' ? 'تاریخ یا ساعت نامعتبر است' : 'Invalid date or time')
+      return
+    }
     try {
-      await saveTimeCfg(ble, {
-        year: now.getFullYear(), month: now.getMonth() + 1, day: now.getDate(),
-        hour: now.getHours(), minute: now.getMinutes(),
-      })
+      await saveTimeCfg(ble, { year, month, day, hour, minute, second })
       toast.success(t('savedToast'))
     } catch (e) {
       toast.error(`${t('writeFailed')}: ${String((e as Error)?.message ?? e)}`)
     }
   }
+
+  const syncClock = async () => {
+    const now = new Date()
+    const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+    const time = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`
+    setManualDate(date)
+    setManualTime(time)
+    await writeClock(date, time)
+  }
+
+  const setManualClock = async () => writeClock(manualDate, manualTime)
 
   return (
     <div className="space-y-4">
@@ -174,12 +201,29 @@ export function DisplayPage() {
           </Section>
 
           <Section title={t('clockSlot')}>
-            <div className="flex items-center gap-3">
-              <Button size="sm" className="gap-1.5" onClick={() => void syncClock()}>
-                <Save className="h-4 w-4" /> {t('syncClock')}
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground">{lang === 'fa' ? 'تاریخ' : 'Date'}</label>
+                <input type="date" value={manualDate} onChange={(e) => setManualDate(e.target.value)}
+                  className="rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm" />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground">{lang === 'fa' ? 'ساعت، دقیقه و ثانیه' : 'Time (HH:MM:SS)'}</label>
+                <input type="time" step="1" value={manualTime} onChange={(e) => setManualTime(e.target.value)}
+                  className="rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm" />
+              </div>
+              <Button size="sm" className="gap-1.5" onClick={() => void setManualClock()}>
+                <Save className="h-4 w-4" /> {lang === 'fa' ? 'تنظیم دستی' : 'Set manually'}
               </Button>
-              <span className="text-xs text-muted-foreground">{t('clockSlot')}</span>
+              <Button size="sm" variant="outline" className="gap-1.5 border-zinc-700" onClick={() => void syncClock()}>
+                <RefreshCcw className="h-4 w-4" /> {t('syncClock')}
+              </Button>
             </div>
+            <p className="text-xs text-muted-foreground">
+              {lang === 'fa'
+                ? 'همگام‌سازی خودکار، زمان محلی مرورگر را ارسال می‌کند. ساعت پس از تنظیم در Firmware هر ثانیه جلو می‌رود.'
+                : 'Sync sends your browser local time. Firmware advances the clock once per second after setting it.'}
+            </p>
           </Section>
         </div>
       </div>

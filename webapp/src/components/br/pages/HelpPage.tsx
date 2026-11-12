@@ -56,7 +56,7 @@ export function HelpPage() {
         </div>
       </Section>
 
-      <Section title="Protocol map — MethyleneX firmware (att_cfg.c / mx_config.h)">
+      <Section title="Protocol map — PS2 Bridge firmware (att_cfg.c / mx_config.h)">
         <div className="grid gap-2 text-sm">
           {PROTOCOL.map(([k, v]) => (
             <div key={k} className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3 rounded-lg border border-zinc-800 px-3 py-2">

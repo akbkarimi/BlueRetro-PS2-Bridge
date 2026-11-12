@@ -107,7 +107,6 @@ static uint8_t sense_list[] = {
 static uint8_t led_list[] = {
     LED_P1_PIN, LED_P2_PIN, LED_P3_PIN, LED_P4_PIN
 };
-static uint8_t current_pulse_led = LED_P1_PIN;
 static uint8_t err_led_pin;
 static uint8_t power_off_pin = POWER_OFF_PIN;
 static uint8_t led_init_cnt = 1;
@@ -151,6 +150,19 @@ static inline uint32_t sense_port_is_empty(uint32_t index) {
 #endif
 }
 
+static inline uint32_t wired_port_is_empty(uint32_t index) {
+#if defined(CONFIG_BLUERETRO_SYSTEM_PSX_PS2)
+    /*
+     * PS2 Bluetooth Bridge:
+     * Port Sense pins are not used for Bluetooth output allocation.
+     * Treat each PS2 output slot as available.
+     */
+    (void)index;
+    return 1;
+#else
+    return sense_port_is_empty(index);
+#endif
+}
 static inline void set_power_on(uint32_t state) {
     if (hw_config.power_pin_polarity) {
         gpio_set_level(POWER_ON_PIN, !state);
@@ -211,7 +223,7 @@ static inline void set_sense_out(uint32_t pin, uint32_t state) {
 
 static inline void set_port_led(uint32_t index, uint32_t state) {
 #if defined(CONFIG_BLUERETRO_HW2) && !defined(CONFIG_BLUERETRO_HW_IBLUECONTROL)
-    /* MethyleneX hw2 (PSX pinout): plain GPIO drive. The LEDC gpio_matrix
+    /* BlueRetro PS2 Bridge HW2 (PSX pinout): plain GPIO drive. The LEDC gpio_matrix
        routing left P2..P4 (IO4/IO12/IO15) without an enabled output driver,
        so only IO2 could ever light. On this board LED P1=IO2, P2=IO4. */
     if (index < (sizeof(led_list) / sizeof(led_list[0]))) {
@@ -230,10 +242,6 @@ static inline void set_port_led(uint32_t index, uint32_t state) {
         esp_rom_gpio_connect_out_signal(led_list[index], ledc_sig_out_idx(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_2), 0, 0);
     }
 #endif
-}
-
-static inline uint32_t get_port_led_pin(uint32_t index) {
-    return led_list[index];
 }
 
 static void internal_flag_init(void) {
@@ -258,14 +266,6 @@ static void internal_flag_init(void) {
     }
     else {
         printf("# %s: Internal adapter\n", __FUNCTION__);
-    }
-}
-
-static void port_led_pulse(uint32_t pin) {
-    if (pin) {
-        PIN_FUNC_SELECT(GPIO_PIN_MUX_REG[pin], PIN_FUNC_GPIO);
-        gpio_set_direction(pin, GPIO_MODE_OUTPUT);
-        esp_rom_gpio_connect_out_signal(pin, ledc_sig_out_idx(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0), 0, 0);
     }
 }
 
@@ -325,9 +325,17 @@ static void power_on_hdl(void) {
     else {
         /* System is off */
         if (curr != prev) {
-            /* Kick BT controllers on off transition */
-            bt_host_disconnect_all();
-        }
+            printf(
+          "# POWER DEBUG: prev=%ld curr=%ld GPIO39=%d external_adapter=%u\n",
+          (long)prev,
+          (long)curr,
+          gpio_get_level(POWER_SENSE_PIN),
+          (unsigned)hw_config.external_adapter
+    );
+
+    /* Kick BT controllers on off transition */
+    bt_host_disconnect_all();
+}
         else if (bt_host_get_hid_init_dev(&not_used) > -1) {
             /* Power on BT connect */
             bt_hci_inquiry_override(0);
@@ -346,8 +354,8 @@ static void power_on_hdl(void) {
 static void wired_port_hdl(void) {
     uint32_t update = 0;
     uint16_t port_mask = 0;
-    uint8_t err_led_set = 0;
     uint8_t pads_ready = 0;
+    uint32_t ready_port_mask = 0;
 #ifdef CONFIG_BLUERETRO_HW2
     static uint32_t last_pad_color_generation;
     static uint32_t last_mx_led_generation;
@@ -367,7 +375,7 @@ static void wired_port_hdl(void) {
         bt_host_get_dev_from_id(i, &device);
 
         for (; j < hw_config.port_cnt; j++) {
-            if (sense_port_is_empty(j)) {
+            if (wired_port_is_empty(j)) {
                 j++;
                 break;
             }
@@ -384,33 +392,14 @@ static void wired_port_hdl(void) {
         int32_t prev_idx = device->ids.out_idx;
 #endif
         device->ids.out_idx = idx;
+        if (bt_ready && device->ids.out_idx < hw_config.port_cnt) {
+            ready_port_mask |= BIT(device->ids.out_idx);
+        }
         if ((hw_config.hotplug && bt_ready) || !hw_config.hotplug) {
             port_mask |= BIT(idx) | adapter_get_out_mask(idx);
         }
         idx++;
 
-
-        if (device->ids.out_idx < hw_config.port_cnt) {
-            if (bt_ready) {
-                set_port_led(device->ids.out_idx, 1);
-            }
-            else if (get_port_led_pin(device->ids.out_idx) != current_pulse_led) {
-                set_port_led(device->ids.out_idx, 0);
-            }
-        }
-
-        if (!bt_ready && !err_led_set) {
-            uint8_t new_led = (device->ids.out_idx < hw_config.port_cnt) ? get_port_led_pin(device->ids.out_idx) : 0;
-
-            if (bt_hci_get_inquiry()) {
-                port_led_pulse(new_led);
-                err_led_set = 1;
-                current_pulse_led = new_led;
-            }
-            else {
-                current_pulse_led = 0;
-            }
-        }
 
 #ifdef CONFIG_BLUERETRO_HW2
         uint8_t map_changed = (device->ids.out_idx != prev_idx);
@@ -435,6 +424,25 @@ static void wired_port_hdl(void) {
         }
 #endif
     }
+
+    /* HW2 port LEDs are plain GPIO outputs. Avoid routing an unoccupied
+     * port through an unconfigured LEDC channel; blink by toggling GPIO level.
+     * This handler is periodic, so the software phase is shared by both ports. */
+    {
+        static TickType_t last_blink_tick;
+        static uint8_t blink_state;
+        TickType_t now_tick = xTaskGetTickCount();
+
+        if ((TickType_t)(now_tick - last_blink_tick) >= pdMS_TO_TICKS(500)) {
+            last_blink_tick = now_tick;
+            blink_state = !blink_state;
+        }
+
+        for (uint32_t port = 0; port < hw_config.port_cnt; port++) {
+            set_port_led(port, (ready_port_mask & BIT(port)) ? 1 : blink_state);
+        }
+    }
+
 #ifdef CONFIG_BLUERETRO_HW2
     if (pad_color_changed && pad_color_refresh_ok) {
         last_pad_color_generation = pad_color_generation;
@@ -657,8 +665,16 @@ static void sys_mgr_power_off(void) {
 #endif
 }
 
+
 static int32_t sys_mgr_get_power(void) {
-#ifdef CONFIG_BLUERETRO_SYSTEM_UNIVERSAL
+#if defined(CONFIG_BLUERETRO_SYSTEM_PSX_PS2)
+    /*
+     * PS2 bridge: GPIO39 is not connected to a power-sense signal.
+     * Treat the system as powered to prevent false power-off events
+     * and unintended Bluetooth controller disconnections.
+     */
+    return 1;
+#elif defined(CONFIG_BLUERETRO_SYSTEM_UNIVERSAL)
     return 1;
 #else
     if (hw_config.external_adapter) {
@@ -669,6 +685,7 @@ static int32_t sys_mgr_get_power(void) {
     }
 #endif
 }
+
 
 static int32_t sys_mgr_get_boot_btn(void) {
     return !gpio_get_level(BOOT_BTN_PIN);
@@ -847,10 +864,10 @@ void sys_mgr_init(uint32_t package) {
 
     err_led_cfg_update();
 
+    /* This product is PS2-only: initialize only the two physical port LEDs
+       (GPIO2/GPIO4). GPIO12/GPIO15 are owned by ps_spi.c as the per-port
+       analog-mode LEDs and must not be initialized as generic port LEDs. */
     led_init_cnt = hw_config.port_cnt;
-    if (wired_adapter.system_id == PSX || wired_adapter.system_id == PS2) {
-        led_init_cnt = 4;
-    }
 
 #ifdef CONFIG_BLUERETRO_HW2
     for (uint32_t i = 0; i < hw_config.port_cnt; i++) {
@@ -881,7 +898,7 @@ void sys_mgr_init(uint32_t package) {
 
         if (i < hw_config.port_cnt) {
 #if defined(CONFIG_BLUERETRO_HW2) && !defined(CONFIG_BLUERETRO_HW_IBLUECONTROL)
-            /* MethyleneX hw2: port LEDs are plain GPIOs; keep the output
+            /* BlueRetro PS2 Bridge HW2: port LEDs are plain GPIOs; keep the output
                driver enabled on the plain GPIO signal (no LEDC routing). */
             esp_rom_gpio_connect_out_signal(led_list[i], SIG_GPIO_OUT_IDX, 0, 0);
 #else

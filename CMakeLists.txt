@@ -2,11 +2,14 @@
 # CMakeLists in this exact order for cmake to work correctly
 cmake_minimum_required(VERSION 3.22)
 
-# MethyleneX firmware version. Shows up in the boot log, in `esptool
-# read_flash` info and — most importantly — in the WebApp Home page (the
-# a09 firmware-version GATT read), so a stale/cached build can never be
-# mistaken for the freshly flashed one again.
-set(PROJECT_VER "mx-v6")
+# BlueRetro PS2 Bridge product firmware identity. Keep the version short;
+# it is exposed through the firmware-version GATT characteristic.
+if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/version.txt")
+    file(READ "${CMAKE_CURRENT_LIST_DIR}/version.txt" PROJECT_VER)
+    string(STRIP "${PROJECT_VER}" PROJECT_VER)
+else()
+    set(PROJECT_VER "ps2b-v1.0")
+endif()
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
-project("BlueRetro$ENV{BR_HW}$ENV{BR_SYS}")
+project("BlueRetroPS2Bridge")

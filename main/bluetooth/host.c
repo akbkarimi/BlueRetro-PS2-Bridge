@@ -26,8 +26,10 @@
 #include "debug.h"
 #include "mon.h"
 #include "system/fs.h"
+#include "system/ui.h"
 #include "system/mx_config.h"
 #include "adapter/config.h"
+#include "adapter/shortcut.h"
 #include "adapter/gameid.h"
 #include "adapter/memory_card.h"
 #include "adapter/wired/wired.h"
@@ -512,6 +514,16 @@ uint32_t bt_host_get_flag_dev_cnt(uint32_t flag) {
     return cnt;
 }
 
+void bt_host_disconnect_out_idx(uint8_t out_idx) {
+    struct bt_dev *device = NULL;
+    if (bt_host_get_active_dev_from_out_idx(out_idx, &device) >= 0 && device) {
+        /* bt_hci_disconnect queues the HCI command; the disconnect-complete
+         * event owns the eventual slot reset. Do not memset a live BT slot
+         * from the controller-input callback. */
+        bt_hci_disconnect(device);
+    }
+}
+
 void bt_host_disconnect_all(void) {
     printf("# %s BOOT SW pressed, DISCONN all devices!\n", __FUNCTION__);
     for (uint32_t i = 0; i < BT_MAX_DEV; i++) {
@@ -721,6 +733,8 @@ reset_dev:
     int32_t out_idx = device->ids.out_idx;
     if (out_idx >= 0 && out_idx < WIRED_MAX_DEV) {
         adapter_reset_controller_state((uint8_t)out_idx);
+        shortcut_reset((uint8_t)out_idx);
+        ui_touch_reset((uint8_t)out_idx);
     }
 
     adapter_init_buffer(dev_id);

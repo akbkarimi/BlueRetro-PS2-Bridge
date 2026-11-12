@@ -1,6 +1,6 @@
 'use client'
 
-/** Shared UI helpers for the MethyleneX WebApp pages */
+/** Shared UI helpers for the BlueRetro PS2 Bridge WebApp pages */
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { useBr } from '@/lib/br/store'

@@ -1,5 +1,5 @@
 /**
- * MethyleneX melodies — the 27 internal melodies from the project spec sheet
+ * BlueRetro PS2 Bridge melodies — the 27 internal melodies from the project spec sheet
  * "ملودی‌ها و سیستم صدا" with the note table from the same sheet.
  * NOTE_D6 / NOTE_G6 are derived by octave doubling (sheet table stops at E6
  * but several melodies use D6/G6).

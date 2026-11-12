@@ -1,5 +1,5 @@
 /**
- * MethyleneX Display Engine — virtual SSD1306 OLED (128x32 / 128x64)
+ * PS2 Bridge Display Engine — virtual SSD1306 OLED (128x32 / 128x64)
  *
  * Faithful port of the spec-sheet primitives (px / rect / line / text / font5x8)
  * and the 11 firmware idle screens + the 2 sheet logo screens.
@@ -336,7 +336,7 @@ export class DisplayEngine {
     if (id === 0) {
       // INFO page
       this.text(2, 1, 'BlueRetro')
-      this.text(76, 1, 'MethyleneX')
+      this.text(76, 1, 'PS2 Bridge')
       this.line(0, 10, OLED_W - 1, 10)
       const p1 = st.ports[0], p2 = st.ports[1]
       this.text(2, 14, `P1 ${p1.connected ? p1.type : '----'}`)
@@ -360,7 +360,7 @@ export class DisplayEngine {
       this.text(2, 2, 'BT ADDRESS')
       this.line(0, 11, OLED_W - 1, 11)
       this.text(2, 16, st.bdaddr)
-      this.text(2, 28, 'BlueRetro MethyleneX')
+      this.text(2, 28, 'BlueRetro PS2 Bridge')
       if (H === 64) {
         this.text(2, 42, 'WebApp over BLE')
         this.text(2, 54, 'SWIPE: pages')
@@ -690,7 +690,7 @@ export class DisplayEngine {
         if (p > 0.15) this.drawBitmap(LOGO_BITMAP_2, 0, H === 64 ? 16 : 0)
         break
       case 1: { // Typewriter
-        const s = 'BlueRetro MethyleneX'
+        const s = 'BlueRetro PS2 Bridge'
         const nch = Math.floor(p * 1.4 * s.length)
         this.text(4, Math.round(H / 2) - 4, s.slice(0, nch))
         if (t % 600 < 300) this.px(6 + nch * 6, Math.round(H / 2) - 4, 1)
@@ -699,14 +699,14 @@ export class DisplayEngine {
       case 2: { // Slide in
         const off = Math.round((1 - Math.min(1, p * 1.6)) * OLED_W)
         this.text(off, 12, 'BlueRetro')
-        this.text(off, 24, 'MethyleneX')
+        this.text(off, 24, 'PS2 Bridge')
         if (H === 64) this.text(off, 40, 'PS2 adapter')
         break
       }
       case 3: { // Scan reveal
         const lines = Math.floor(p * H)
         this.text(4, 12, 'BlueRetro')
-        this.text(4, 24, 'MethyleneX')
+        this.text(4, 24, 'PS2 Bridge')
         for (let y = H - 1; y >= lines; y--) for (let x = 0; x < OLED_W; x++) this.fb[y * OLED_W + x] = 0
         if (lines < H) this.line(0, lines, OLED_W - 1, lines)
         break
@@ -714,7 +714,7 @@ export class DisplayEngine {
       case 4: { // Triple flash
         const phase = Math.floor(p * 6) % 2
         this.text(8, 16, phase ? '' : 'BlueRetro')
-        this.text(8, 28, phase ? '' : 'MethyleneX')
+        this.text(8, 28, phase ? '' : 'PS2 Bridge')
         break
       }
       case 5: // Simple
@@ -764,12 +764,12 @@ export class DisplayEngine {
           const a2 = ((i + 1) * Math.PI) / 2 + p * 3
           this.line(Math.round(cx + r * Math.cos(a1)), Math.round(cy + r * Math.sin(a1)), Math.round(cx + r * Math.cos(a2)), Math.round(cy + r * Math.sin(a2)))
         }
-        this.text(46, Math.round(H / 2) - 4, 'MethyleneX')
+        this.text(46, Math.round(H / 2) - 4, 'PS2 Bridge')
         break
       }
       case 13: { // GC Wordmark
         const w = Math.floor(p * 1.5 * 11)
-        this.textBig(10, Math.round(H / 2) - 8, 'METHYLENE'.slice(0, Math.min(9, w)), 1)
+        this.textBig(10, Math.round(H / 2) - 8, 'PS2BRIDGE'.slice(0, Math.min(9, w)), 1)
         break
       }
       case 14: { // GC Cube Big

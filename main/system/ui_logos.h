@@ -1,7 +1,7 @@
 /*
  * PlayStation logo bitmaps, 128x32 monochrome (512 bytes each), byte = 8
  * horizontal pixels, bit7 = leftmost pixel. Extracted verbatim from the
- * MethyleneX spec workbook ("Logo PS" = ui_logo_ps, "Logo playstation" =
+ * BlueRetro PS2 Bridge specification ("Logo PS" = ui_logo_ps, "Logo playstation" =
  * ui_logo_playstation). Local addition, not part of upstream BlueRetro.
  * SPDX-License-Identifier: Apache-2.0
  */

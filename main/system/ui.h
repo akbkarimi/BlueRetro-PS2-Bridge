@@ -52,7 +52,7 @@ typedef enum {
     UI_SND_COUNT,
 } ui_snd_evt_t;
 
-/* Built-in melodies: the 27 MethyleneX melodies (see the spec workbook). */
+/* Built-in melodies: the 27 BlueRetro PS2 Bridge melodies (see the spec workbook). */
 #define UI_MELODY_COUNT 27
 
 #define UI_SAVER_AUTO 0xFF  /* saver_mode value: cycle through all screensavers */
@@ -102,6 +102,7 @@ uint32_t ui_pad_color_generation(void);     /* Changes every time the color sett
    valid: this report carries a touch packet; down/x/y: finger state (x 0..1919, y 0..941);
    click: the touchpad is pressed. Swipes left/right change the screensaver, up/down the color. */
 void ui_touch_feed(uint8_t valid, uint8_t down, uint16_t x, uint16_t y, uint8_t click, uint8_t src_port);
+void ui_touch_reset(uint8_t src_port);
 
 void ui_settings_get(ui_settings_t *out);
 void ui_settings_set(const ui_settings_t *in);

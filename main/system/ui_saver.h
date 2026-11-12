@@ -1,5 +1,5 @@
 /*
- * OLED screensavers (per the MethyleneX spec workbook).
+ * OLED screensavers (per the BlueRetro PS2 Bridge specification).
  * Draws into the ui_gfx framebuffer, no hardware access.
  * Local addition, not part of upstream BlueRetro.
  * SPDX-License-Identifier: Apache-2.0

@@ -30,6 +30,7 @@ int  gfx_text(int x, int y, const char *s);                 /* 5x7 font, upper c
 void gfx_big_num(int x, int y, int w, int h, int value);    /* 2-digit 7-segment number filling the box */
 void gfx_big_hhmm(int x, int y, int w, int h, int hh, int mm, int colon_on);
                                                             /* "HH:MM" 7-segment digits filling the box */
+void gfx_big_hhmmss(int x, int y, int w, int h, int hh, int mm, int ss);
 const uint8_t *gfx_buffer(void);
 
 #endif /* _UI_GFX_H_ */

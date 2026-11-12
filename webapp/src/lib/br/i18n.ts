@@ -8,10 +8,10 @@ export const LANGS: { id: Lang; label: string; dir: 'ltr' | 'rtl' }[] = [
 ]
 
 const dict = {
-  appName: { en: 'BlueRetro MethyleneX', fa: 'BlueRetro MethyleneX' },
+  appName: { en: 'BlueRetro PS2 Bridge', fa: 'BlueRetro PS2 Bridge' },
   tagline: {
-    en: 'Config tool for the real MethyleneX adapter over Web Bluetooth',
-    fa: 'ابزار پیکربندی آداپتور واقعی MethyleneX از طریق Web Bluetooth',
+    en: 'Config tool for the BlueRetro PS2 Bridge over Web Bluetooth',
+    fa: 'ابزار پیکربندی آداپتور BlueRetro PS2 Bridge از طریق Web Bluetooth',
   },
   connect: { en: 'Connect', fa: 'اتصال' },
   connectReal: { en: 'Connect to device (Bluetooth)', fa: 'اتصال به دستگاه (بلوتوث)' },
@@ -40,10 +40,11 @@ const dict = {
     fa: 'راه‌حل اندروید: سرور را متوقف کنید و با HTTPS اجرا کنید (دستور: npx next dev --experimental-https)، سپس در Google Chrome آدرس https://IP-کامپیوتر:3000 را باز کنید و از صفحه هشدار، Advanced → Proceed را بزنید. بلوتوث و Location گوشی هم روشن باشد و حتماً از Google Chrome استفاده کنید (نه مرورگرهای دیگر).',
   },
   noDeviceSelected: { en: 'No device selected', fa: 'دستگاهی انتخاب نشد' },
+  incompatibleDevice: { en: 'This is not a BlueRetro PS2 Bridge device.', fa: 'این دستگاه BlueRetro PS2 Bridge نیست.' },
   connectionLost: { en: 'Connection lost — reconnect', fa: 'اتصال قطع شد — دوباره وصل شوید' },
   readFailedHint: {
-    en: 'Connected, but this config could not be read from the device — press Re-read config. If it keeps failing, the firmware on the device is older than this app: flash the mx-v6 firmware, then reconnect.',
-    fa: 'اتصال برقرار است اما این بخش از دستگاه خوانده نشد — دکمه «خواندن مجدد تنظیمات» را بزنید. اگر باز هم خوانده نشد، یعنی فریمویر دستگاه قدیمی‌تر از این برنامه است: فریمویر mx-v6 را فلش کنید و دوباره وصل شوید.',
+    en: 'Connected, but this config could not be read from the device — press Re-read config. If it keeps failing, the firmware on the device is older than this app: flash the current BlueRetro PS2 Bridge firmware, then reconnect.',
+    fa: 'اتصال برقرار است اما این بخش از دستگاه خوانده نشد — دکمه «خواندن مجدد تنظیمات» را بزنید. اگر باز هم خوانده نشد، یعنی فریمویر دستگاه قدیمی‌تر از این برنامه است: فریمور BlueRetro PS2 Bridge را فلش کنید و دوباره وصل شوید.',
   },
 
   // pages
@@ -289,6 +290,7 @@ const dict = {
     fa: 'فیلدهای پیکربندی اصلی BlueRetro (a01 کلی + a02/a03 خروجی) به‌همراه بایت FEATURES مال MX',
   },
   systemCfg: { en: 'System mode', fa: 'حالت سیستم' },
+  ps2Only: { en: 'PlayStation 2 (fixed target)', fa: 'PlayStation 2 (هدف ثابت)' },
   multitap: { en: 'Multitap', fa: 'مالتی‌تپ' },
   featuresByte: { en: 'FEATURES bits (raw)', fa: 'بیت‌های FEATURES (خام)' },
   featuresHint: {
@@ -338,8 +340,8 @@ const dict = {
   },
   origDocs: { en: 'Original BlueRetro project', fa: 'پروژه اصلی BlueRetro' },
   origDocsHint: {
-    en: 'This page mirrors the original BlueRetro web config (blueretro.io) on the MethyleneX protocol. Documentation lives in the original GitHub repo wiki.',
-    fa: 'این صفحه همان ابزار اصلی پیکربندی BlueRetro (blueretro.io) است که روی پروتکل MethyleneX بازسازی شده. مستندات در ویکی مخزن اصلی گیت‌هاب است.',
+    en: 'This page mirrors the original BlueRetro web config (blueretro.io) on this project’s device protocol. Documentation lives in the original GitHub repo wiki.',
+    fa: 'این صفحه همان ابزار اصلی پیکربندی BlueRetro (blueretro.io) است که بر اساس پروتکل اختصاصی این پروژه بازسازی شده است. مستندات در ویکی مخزن اصلی گیت‌هاب است.',
   },
 
   // reference page

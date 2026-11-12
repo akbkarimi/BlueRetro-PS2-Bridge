@@ -21,10 +21,12 @@ firmware:
   configuration:
     hardware_symbol: CONFIG_BLUERETRO_HW2
     console_symbol: CONFIG_BLUERETRO_SYSTEM_PSX_PS2
-    note: "The inherited PSX_PS2 backend must be narrowed to PS2-only."
+    note: "Kconfig exposes only this fixed HW2/PS2 product target; PS1 and other console targets are not selectable in this repository build."
 
 bluetooth:
-  device_name_prefix: BlueRetro
+  device_name_prefix: BRPS2
+  device_full_name_format: "BRPS2Bridge_<mac_suffix>"
+  service_uuid_in_primary_advertisement: true
 
   service:
     uuid: "56830f56-5180-fab0-314b-2fa176799a00"
@@ -36,6 +38,10 @@ bluetooth:
       access: read_write
       length: 4
       fields: [system_cfg, multitap_cfg, inquiry_mode, banksel]
+      product_constraint:
+        system_cfg_fixed_value: 17
+        system_name: PlayStation 2
+        firmware_rejects_other_system_values: true
 
     - index: 2
       name: output_config_control
@@ -562,13 +568,14 @@ mx_configuration:
 
     time:
       id: 4
-      length: 6
+      length: 7
       fields:
         - year
         - month
         - day
         - hour
         - minute
+        - second
       year_encoding: uint16_little_endian
 
     pages:
@@ -583,10 +590,19 @@ mx_configuration:
 
     keys:
       id: 7
-      length: 2
-      fields:
-        - screensaver_combo
-        - menu_combo
+      length: 82
+      fields: [version, count, entries]
+      version: 2
+      max_entries: 8
+      entry_length: 10
+      entry_fields: [action_u8, trigger_u8, enabled_u8, reserved_u8, buttons_u32_le, hold_ms_u16_le]
+      triggers: {press: 0, hold: 1, double_press: 2, release: 3}
+      actions: {screensaver_enter: 1, menu_enter: 2, page_next: 3, page_previous: 4, screensaver_next: 5, screensaver_previous: 6, disconnect_controller: 7, disconnect_all_controllers: 8}
+      constraints:
+        home_modifier_required: true
+        home_start_reserved: true
+        home_share_reserved: true
+        max_hold_ms: 5000
 
     mac:
       id: 8
@@ -603,23 +619,11 @@ mx_configuration:
       requires_reboot: true
       persistence: NVS
 
-  shortcut_combos:
-    - id: 0
-      name: home_up
-    - id: 1
-      name: home_down
-    - id: 2
-      name: home_left
-    - id: 3
-      name: home_right
-    - id: 4
-      name: share_cross
-    - id: 5
-      name: l1_r1
-    - id: 6
-      name: l2_r2
-    - id: 7
-      name: l3_r3
+  fixed_system_shortcuts:
+    - {combo: home_hold, duration_ms: 3000, action: power_off}
+    - {combo: home_double_press, action: console_reset}
+    - {combo: home_start, action: bluetooth_pairing_toggle}
+    - {combo: home_share, action: disconnect_current_controller}
 
   screensaver_modes:
     - {id: 0, name: off}

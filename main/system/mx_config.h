@@ -2,6 +2,7 @@
 #define __MX_CONFIG_H__
 
 #include <stdint.h>
+#include <stdbool.h>
 #include <stddef.h>
 
 #ifndef __packed
@@ -86,17 +87,51 @@ struct mx_time_cfg {
     uint8_t day;
     uint8_t hour;
     uint8_t minute;
+    uint8_t second;
 } __packed;
 
 struct mx_features_cfg {
     uint8_t bits;
 } __packed;
 
-/* Configurable pad shortcut combos (WebApp Shortcuts page).
-   Values are combo ids, see MX_KEYS_COMBO_* below. */
+/* Versioned Shortcut Manager configuration. All user-defined button shortcuts
+ * require Home + at least one additional button; system-reserved Home+Start
+ * and Home+Share remain owned by the fixed system shortcuts. */
+#define MX_KEYS_VERSION 2
+#define MX_KEYS_ACTION_MAX 8
+
+enum mx_shortcut_action {
+    MX_SC_NONE = 0,
+    MX_SC_SAVER_ENTER = 1,
+    MX_SC_MENU_ENTER = 2,
+    MX_SC_PAGE_NEXT = 3,
+    MX_SC_PAGE_PREV = 4,
+    MX_SC_SAVER_NEXT = 5,
+    MX_SC_SAVER_PREV = 6,
+    MX_SC_DISCONNECT_PAD = 7,
+    MX_SC_DISCONNECT_ALL = 8,
+};
+
+enum mx_shortcut_trigger {
+    MX_SC_TRIGGER_PRESS = 0,
+    MX_SC_TRIGGER_HOLD = 1,
+    MX_SC_TRIGGER_DOUBLE = 2,
+    MX_SC_TRIGGER_RELEASE = 3,
+};
+
+struct mx_shortcut_entry {
+    uint8_t action;
+    uint8_t trigger;
+    uint8_t enabled;
+    uint8_t reserved;
+    uint32_t buttons;
+    uint16_t hold_ms;
+} __packed;
+
 struct mx_keys_cfg {
-    uint8_t saver_combo;    /* Combo that puts the OLED in screensaver mode */
-    uint8_t menu_combo;     /* Combo that returns to the main menu pages */
+    uint8_t version;
+    uint8_t count;
+    struct mx_shortcut_entry entries[MX_KEYS_ACTION_MAX];
 } __packed;
 
 /* Bluetooth BR/EDR address override. mac[] is in display/MSB-first order.
@@ -107,19 +142,6 @@ struct mx_mac_cfg {
     uint8_t mac[6];
 } __packed;
 
-#define MX_KEYS_COMBO_COUNT 8
-
-/* Combo ids shared with the WebApp (Shortcuts page comboboxes).
-   Generic btns: PAD_MM = Home/Options, PAD_MS = Share, PAD_LS/RS = L1/R1,
-   PAD_LT/RT = L2/R2 (analog pads), PAD_LJ/RJ = L3/R3. */
-#define MX_KEYS_COMBO_HOME_UP       0   /* Home + D-Pad up */
-#define MX_KEYS_COMBO_HOME_DOWN     1   /* Home + D-Pad down */
-#define MX_KEYS_COMBO_HOME_LEFT     2   /* Home + D-Pad left */
-#define MX_KEYS_COMBO_HOME_RIGHT    3   /* Home + D-Pad right */
-#define MX_KEYS_COMBO_SHARE_CROSS   4   /* Share + Cross */
-#define MX_KEYS_COMBO_L1_R1         5   /* L1 + R1 */
-#define MX_KEYS_COMBO_L2_R2         6   /* L2 + R2 */
-#define MX_KEYS_COMBO_L3_R3         7   /* L3 + R3 */
 
 void mx_config_init(void);
 void mx_config_select_slot(uint8_t slot);
@@ -135,6 +157,7 @@ const struct mx_features_cfg *mx_cfg_features(void);
 const struct mx_keys_cfg *mx_cfg_keys(void);
 const struct mx_mac_cfg *mx_cfg_mac(void);
 void mx_cfg_set_time(const struct mx_time_cfg *t);
+bool mx_cfg_time_tick(void);
 
 /* Monotonic counter bumped every time the LED slot changes (web write or
    touch swipe). Lets the manager re-send lightbar colors on any change. */

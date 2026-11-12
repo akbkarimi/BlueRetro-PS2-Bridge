@@ -1047,6 +1047,10 @@ void bt_att_cfg_hdlr(struct bt_dev *device, struct bt_hci_pkt *bt_hci_acl_pkt, u
                 case BR_GLBL_CFG_CHRC_HDL:
                     printf("# BR_GLBL_CFG_CHRC_HDL %04X\n", wr_req->handle);
                     memcpy((void *)&config.global_cfg, wr_req->value, sizeof(config.global_cfg));
+#ifdef CONFIG_BLUERETRO_SYSTEM_PSX_PS2
+                    /* Never persist a non-PS2 system selection in this product. */
+                    config.global_cfg.system_cfg = PS2;
+#endif
                     config_update(config_get_src());
                     bt_att_cmd_wr_rsp(device->acl_handle);
                     break;

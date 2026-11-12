@@ -1,15 +1,15 @@
 /**
  * Zustand store v2 — real-device connection lifecycle + config mirrors.
  * The virtual ESP32 simulator was removed: the only source of truth is the
- * real BlueRetro MethyleneX device over Web Bluetooth.
+ * real BlueRetro PS2 Bridge device over Web Bluetooth.
  */
 'use client'
 
 import { create } from 'zustand'
 import { toast } from 'sonner'
-import { BR_SERVICE_UUID, BR_UUID as BR_UUIDS, CH } from './constants'
+import { BR_SERVICE_UUID, BR_UUID as BR_UUIDS, CH, DEVICE_NAME_PREFIX } from './constants'
 import type { BleLike } from './protocol'
-import { getApiVersion, getBdaddr, getFirmwareVersion, readSysCfg, readAudioCfg, readOledCfg, readLedCfg, readIdleCfg, readFeatures, readKeysCfg, type SysCfg, type AudioCfg, type OledCfg, type LedCfg, type IdleCfg, type KeysCfg } from './protocol'
+import { getApiVersion, getBdaddr, getFirmwareName, getFirmwareVersion, readSysCfg, readAudioCfg, readOledCfg, readLedCfg, readIdleCfg, readFeatures, readKeysCfg, type SysCfg, type AudioCfg, type OledCfg, type LedCfg, type IdleCfg, type KeysCfg } from './protocol'
 import type { Lang } from './i18n'
 
 export type PageId =
@@ -63,10 +63,11 @@ interface BrStore {
 async function createRealBle(log: (e: LogEntry) => void): Promise<{ ble: BleLike; disconnect: () => void; onLost: () => void }> {
   const bt = (navigator as Navigator & { bluetooth?: Bluetooth }).bluetooth
   if (!bt) throw new Error('WEB_BT_MISSING')
-  // acceptAllDevices instead of a namePrefix filter: several Android phones
-  // do not surface the advertised name, which made the chooser empty and
-  // pairing fail. optionalServices still gates which device we can open.
-  const device = await bt.requestDevice({ acceptAllDevices: true, optionalServices: [BR_SERVICE_UUID] })
+  // Only show this product's BLE identity. Firmware advertises the service UUID
+  // in primary advertising data and the BRPS2Bridge_* name in scan response.
+  const device = await bt.requestDevice({
+    filters: [{ namePrefix: DEVICE_NAME_PREFIX, services: [BR_SERVICE_UUID] }],
+  })
   if (!device.gatt) throw new Error('GATT unavailable')
   const server = await device.gatt.connect()
   const service = await server.getPrimaryService(BR_SERVICE_UUID)
@@ -138,7 +139,7 @@ export const useBr = create<BrStore>((set, get) => ({
   lang: 'fa',
   /* Day/night theme: default dark, persisted in localStorage. The .dark
      class on <html> is synced by BrApp (globals.css palette flip). */
-  dark: typeof window !== 'undefined' ? localStorage.getItem('brmx.dark') !== '0' : true,
+  dark: typeof window !== 'undefined' ? localStorage.getItem('brps2.dark') !== '0' : true,
   page: 'home',
   connected: false,
   connecting: false,
@@ -158,7 +159,7 @@ export const useBr = create<BrStore>((set, get) => ({
   setLang: (l) => set({ lang: l }),
   toggleDark: () => set((s) => {
     const dark = !s.dark
-    try { localStorage.setItem('brmx.dark', dark ? '1' : '0') } catch { /* private mode */ }
+    try { localStorage.setItem('brps2.dark', dark ? '1' : '0') } catch { /* private mode */ }
     return { dark }
   }),
   setPage: (p) => set({ page: p }),
@@ -170,7 +171,10 @@ export const useBr = create<BrStore>((set, get) => ({
       const { ble, disconnect: disc } = await createRealBle((e) => get().addLog(e))
       realBle = ble
       realDisconnect = disc
-      const [api, fw, bdaddr] = await Promise.all([getApiVersion(ble), getFirmwareVersion(ble), getBdaddr(ble)])
+      const [api, fw, bdaddr, firmwareName] = await Promise.all([getApiVersion(ble), getFirmwareVersion(ble), getBdaddr(ble), getFirmwareName(ble)])
+      if (!firmwareName.startsWith('BlueRetroPS2Bridge')) {
+        throw new Error('INCOMPATIBLE_DEVICE')
+      }
       set({ connected: true, connecting: false, fw, api, bdaddr, error: null })
       get().addLog({ ts: Date.now(), dir: 'ev', ch: 0, msg: `connected: ${fw} · API ${api} · ${bdaddr}` })
       toast.success('اتصال برقرار شد — ' + fw)
@@ -183,6 +187,8 @@ export const useBr = create<BrStore>((set, get) => ({
         // Chrome reuses NotFoundError both for "user cancelled the chooser"
         // and "no device selected" — keep one calm message.
         msg = 'NO_DEVICE_SELECTED'
+      } else if (raw === 'INCOMPATIBLE_DEVICE') {
+        msg = 'INCOMPATIBLE_DEVICE'
       } else if (raw === 'WEB_BT_MISSING') {
         msg = 'WEB_BT_MISSING'
       } else if (err?.name === 'SecurityError') {
@@ -231,7 +237,7 @@ export const useBr = create<BrStore>((set, get) => ({
         if (key === 'features') patch.features = r.value as number
         else patch[key as 'sys'] = r.value as never
       } else if (jobs[i][0] === 'keys') {
-        /* KEYS slot exists only on firmware mx-v6+. On older firmware this is
+        /* KEYS slot exists only on BlueRetro PS2 Bridge firmware with Shortcut Manager. On older firmware this is
            expected: leave keys null (Shortcuts page shows "not available")
            without flagging the whole refresh as incomplete. */
       } else {

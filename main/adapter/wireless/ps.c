@@ -188,6 +188,24 @@ static void ps4_to_generic(struct bt_data *bt_data, struct wireless_ctrl *ctrl_d
     /* Convert hat to regular btns */
     ctrl_data->btns[0].value |= hat_to_ld_btns[map->hat & 0xF];
 
+    /* Temporary DS4 button diagnostic: does not change controller input. */
+    static uint32_t last_ds4_buttons = UINT32_MAX;
+    static uint32_t last_generic_buttons = UINT32_MAX;
+
+    if (map->buttons != last_ds4_buttons ||
+        ctrl_data->btns[0].value != last_generic_buttons) {
+        printf(
+            "# DS4 INPUT: raw=0x%08lX hat=0x%02X generic=0x%08lX\n",
+            (unsigned long)map->buttons,
+            (unsigned int)(map->hat & 0x0F),
+            (unsigned long)ctrl_data->btns[0].value
+        );
+
+        last_ds4_buttons = map->buttons;
+        last_generic_buttons = ctrl_data->btns[0].value;
+    }
+
+
     if (!atomic_test_bit(&bt_data->base.flags[PAD], BT_INIT)) {
         memcpy(meta, ps4_axes_meta, sizeof(ps4_axes_meta));
         bt_mon_log(false, "%s: axes_cal: [", __FUNCTION__);

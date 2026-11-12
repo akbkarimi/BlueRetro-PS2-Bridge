@@ -256,9 +256,9 @@ static void seg_draw_digit(int x, int y, int w, int h, int digit) {
     if (seg & 0x40) gfx_fill_rect(x + t, mid, w - 2 * t, t, 1);             /* G */
     if (seg & 0x08) gfx_fill_rect(x + t, y + h - t, w - 2 * t, t, 1);       /* D */
     if (seg & 0x02) gfx_fill_rect(x + w - t, y + t, t, mid - y - t, 1);     /* B */
-    if (seg & 0x10) gfx_fill_rect(x + w - t, mid + t, t, y + h - mid - 2 * t, 1); /* C */
+    if (seg & 0x04) gfx_fill_rect(x + w - t, mid + t, t, y + h - mid - 2 * t, 1); /* C */
     if (seg & 0x20) gfx_fill_rect(x, y + t, t, mid - y - t, 1);             /* F */
-    if (seg & 0x04) gfx_fill_rect(x, mid + t, t, y + h - mid - 2 * t, 1);   /* E */
+    if (seg & 0x10) gfx_fill_rect(x, mid + t, t, y + h - mid - 2 * t, 1);   /* E */
 }
 
 void gfx_big_num(int x, int y, int w, int h, int value) {
@@ -305,6 +305,42 @@ void gfx_big_hhmm(int x, int y, int w, int h, int hh, int mm, int colon_on) {
     }
     seg_draw_digit(xc + colon_w + gap, y, digit_w, h, (mm / 10) % 10);
     seg_draw_digit(xc + colon_w + gap + digit_w + gap, y, digit_w, h, mm % 10);
+}
+
+void gfx_big_hhmmss(int x, int y, int w, int h, int hh, int mm, int ss) {
+    /* Six compact digits and two separators fit a 128x32 OLED. */
+    int t = h / 7;
+    if (t < 2) t = 2;
+    if (t > w / 34) t = w / 34;
+    if (t < 2) t = 2;
+
+    int gap = (h >= 30) ? 2 : 1;
+    int colon_w = (t > 3) ? t + 1 : 4;
+    int max_digit_w = (h * 4) / 5;
+    int available_digit_w = (w - 2 * colon_w - 8 * gap) / 6;
+    int digit_w = (available_digit_w < max_digit_w) ? available_digit_w : max_digit_w;
+    int used = 6 * digit_w + 2 * colon_w + 8 * gap;
+    int x0 = x + (w - used) / 2;
+    int dot_y1 = y + h / 3 - t / 2;
+    int dot_y2 = y + (2 * h) / 3 - t / 2;
+
+    if (digit_w < 2 * t + 1 || h < 3 * t) return;
+
+    int values[6] = {
+        (hh / 10) % 10, hh % 10,
+        (mm / 10) % 10, mm % 10,
+        (ss / 10) % 10, ss % 10
+    };
+    int cursor = x0;
+    for (int i = 0; i < 6; i++) {
+        seg_draw_digit(cursor, y, digit_w, h, values[i]);
+        cursor += digit_w + gap;
+        if (i == 1 || i == 3) {
+            gfx_fill_rect(cursor + (colon_w - t) / 2, dot_y1, t, t, 1);
+            gfx_fill_rect(cursor + (colon_w - t) / 2, dot_y2, t, t, 1);
+            cursor += colon_w + gap;
+        }
+    }
 }
 
 const uint8_t *gfx_buffer(void) {

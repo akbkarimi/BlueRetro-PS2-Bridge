@@ -13,31 +13,13 @@ concurrency:
 
 jobs:
   build:
-    if: ${{ (github.repository_owner == 'barrenechea') || (github.event_name == 'workflow_dispatch') }}
     strategy:
-      # The targets are independent, so one broken config should not hide the
-      # state of the other 48. Without this, a single failure cancels the run and
-      # each remaining breakage costs another full round trip to discover.
-      fail-fast: false
+      # This repository produces one product: ESP32 HW2 / PlayStation 2.
+      # Do not matrix-build upstream BlueRetro targets (Saturn, Game Boy, etc.).
+      fail-fast: true
       matrix:
-        hw_version: [hw1, hw2]
-        br_config:
-          [3do, cdi, dreamcast, gamecube, gbahd, genesis, jaguar, jvs_arcade, n64, nes,
-          parallel_1p, parallel_1p_3v3, parallel_2p, parallel_2p_3v3, pc_engine, pcfx,
-          playstation, saturn, snes, universal, virtualboy, wii_extension]
-        include:
-          # hw2 only, so it cannot go in the br_config list above: that is
-          # crossed with both hw versions and there is no configs/hw1 variant.
-          - hw_version: hw2
-            br_config: ibluecontrol_snes
-          - hw_version: dbg
-            br_config: pad_test
-          - hw_version: dbg
-            br_config: qemu
-          - hw_version: dbg
-            br_config: qemu_bt_trace_replay
-          - hw_version: dbg
-            br_config: qemu_bt_trace_replay_test
+        hw_version: [hw2]
+        br_config: [playstation]
     runs-on: ubuntu-latest
     # Espressif's official image. A prebuilt toolchain beats installing one on
     # every job. release-v6.1 follows the 6.1.x patch releases, so a rebuild
@@ -45,7 +27,7 @@ jobs:
     container:
       image: espressif/idf:release-v6.1
     outputs:
-      br_version: ${{ env.br_version }}
+      br_version: ${{ steps.version.outputs.br_version }}
 
     steps:
     - name: Checkout repo
@@ -54,6 +36,7 @@ jobs:
         submodules: recursive
         fetch-depth: 0
     - name: Build with ESP-IDF
+      id: version
       shell: bash
       run: |
         # The workspace is checked out by the runner user, but this container
@@ -75,13 +58,14 @@ jobs:
           br_version="v${cal}-dev-${n}-g$(git rev-parse --short HEAD)"
         fi
         echo "br_version=$br_version" >> $GITHUB_ENV
+        echo "br_version=$br_version" >> $GITHUB_OUTPUT
         rm -fr build
         # Version alone: project_name already carries hw and config, and the BLE
         # characteristic that reports this is 23 bytes.
         echo "$br_version" | cut -c -31 > version.txt
         cat version.txt
         cp configs/${{ matrix.hw_version }}/${{ matrix.br_config }} sdkconfig
-        BR_HW=_${{ matrix.hw_version }} BR_SYS=_${{ matrix.br_config }} idf.py reconfigure build
+        idf.py reconfigure build
     - name: Stage artifact
       shell: bash
       run: |
@@ -91,7 +75,7 @@ jobs:
         cp build/bootloader/bootloader.bin "$out/bootloader/"
         cp build/partition_table/partition-table.bin "$out/partition_table/"
         cp build/ota_data_initial.bin "$out/ota/"
-        cp build/BlueRetro*.bin "$out/"
+        cp build/BlueRetroPS2Bridge.bin "$out/"
     - name: Upload artifact
       uses: actions/upload-artifact@v7
       with:
@@ -107,21 +91,11 @@ jobs:
       actions: write
 
     steps:
-      - name: Merge Artifacts HW1
-        uses: actions/upload-artifact/merge@v7
-        with:
-          name: ${{ needs.build.outputs.br_version }}_hw1
-          pattern: hw1*
       - name: Merge Artifacts HW2
         uses: actions/upload-artifact/merge@v7
         with:
           name: ${{ needs.build.outputs.br_version }}_hw2
           pattern: hw2*
-      - name: Merge Artifacts DBG
-        uses: actions/upload-artifact/merge@v7
-        with:
-          name: ${{ needs.build.outputs.br_version }}_dbg
-          pattern: dbg*
       # Not `delete-merged: true`. That deletes through @actions/artifact, which
       # retries a delete that has in fact already succeeded and then treats the
       # resulting 404 as fatal - after the merge itself has completed. See
@@ -139,7 +113,7 @@ jobs:
         run: |
           gh api --paginate \
             "repos/$REPO/actions/runs/$RUN_ID/artifacts" \
-            --jq '.artifacts[] | select(.name | test("^(hw1|hw2|dbg)_")) | "\(.id) \(.name)"' \
+            --jq '.artifacts[] | select(.name | test("^hw2_playstation$")) | "\(.id) \(.name)"' \
           | while read -r id name; do
               if gh api -X DELETE "repos/$REPO/actions/artifacts/$id" >/dev/null 2>&1; then
                 echo "deleted $name ($id)"
@@ -164,7 +138,7 @@ jobs:
         uses: actions/download-artifact@v7
         with:
           path: dist
-          pattern: '*_hw*'
+          pattern: '*_hw2'
       - name: Zip per hardware revision
         run: |
           cd dist

@@ -57,10 +57,16 @@ static void wired_init_task(void) {
         delay_us(1000);
     }
 
+#ifdef CONFIG_BLUERETRO_SYSTEM_PSX_PS2
+    /* This product is PS2-only; ignore legacy config-bank system overrides. */
+    config.global_cfg.system_cfg = PS2;
+    wired_adapter.system_id = PS2;
+#else
     if (config.global_cfg.system_cfg < WIRED_MAX && config.global_cfg.system_cfg != WIRED_AUTO) {
         wired_adapter.system_id = config.global_cfg.system_cfg;
         ets_printf("# Config override system : %d: %s\n", wired_adapter.system_id, wired_get_sys_name());
     }
+#endif
 
     for (uint32_t i = 0; i < WIRED_MAX_DEV; i++) {
         adapter_init_buffer(i);

@@ -1,5 +1,5 @@
 /**
- * WebApp protocol layer v3 — speaks the REAL MethyleneX firmware protocol.
+ * WebApp protocol layer — BlueRetro PS2 Bridge firmware protocol.
  * Every function mirrors the handlers in main/bluetooth/att_cfg.c:
  *   a01 global config (4 B) · a02/a03 port select/data · a07 command channel
  *   a0d MX slot select · a0e MX blob read/write
@@ -244,29 +244,31 @@ export async function saveIdleCfg(ble: BleLike, c: IdleCfg) {
   await mxWrite(ble, MX_SLOT.IDLE, b)
 }
 
-/* ---- TIME slot (6 bytes) ---- */
-export interface TimeCfg { year: number; month: number; day: number; hour: number; minute: number }
+/* ---- TIME slot (7 bytes: date + HH:MM:SS) ---- */
+export interface TimeCfg { year: number; month: number; day: number; hour: number; minute: number; second: number }
 
 export async function readTimeCfg(ble: BleLike): Promise<TimeCfg> {
   const dv = await mxRead(ble, MX_SLOT.TIME)
-  if (dv.byteLength < 6) throw new Error('TIME_SLOT_EMPTY')
+  if (dv.byteLength < 7) throw new Error('TIME_SLOT_EMPTY')
   return {
     year: dv.getUint16(0, true),
     month: dv.getUint8(2),
     day: dv.getUint8(3),
     hour: dv.getUint8(4),
     minute: dv.getUint8(5),
+    second: dv.getUint8(6),
   }
 }
 
 export async function saveTimeCfg(ble: BleLike, c: TimeCfg) {
-  const b = new Uint8Array(6)
+  const b = new Uint8Array(7)
   b[0] = c.year & 0xff
   b[1] = (c.year >> 8) & 0xff
   b[2] = c.month
   b[3] = c.day
   b[4] = c.hour
   b[5] = c.minute
+  b[6] = c.second
   await mxWrite(ble, MX_SLOT.TIME, b)
 }
 
@@ -280,26 +282,58 @@ export async function saveFeatures(ble: BleLike, bits: number) {
   await mxWrite(ble, MX_SLOT.FEATURES, u8(bits & 0xff))
 }
 
-/* ---- KEYS slot (2 bytes): configurable shortcut combos ---- */
-export interface KeysCfg {
-  saverCombo: number // combo id that enters screensaver mode (0..7)
-  menuCombo: number  // combo id that returns to the main menu (0..7)
+/* ---- KEYS slot v2: versioned Shortcut Manager ---- */
+export const SHORTCUT_ACTION = {
+  SAVER_ENTER: 1, MENU_ENTER: 2, PAGE_NEXT: 3, PAGE_PREV: 4,
+  SAVER_NEXT: 5, SAVER_PREV: 6,
+  DISCONNECT_PAD: 7, DISCONNECT_ALL: 8,
+} as const
+export const SHORTCUT_TRIGGER = { PRESS: 0, HOLD: 1, DOUBLE: 2, RELEASE: 3 } as const
+export interface ShortcutEntry {
+  action: number
+  trigger: number
+  enabled: boolean
+  buttons: number
+  holdMs: number
 }
-
+export interface KeysCfg { version: 2; entries: ShortcutEntry[] }
+export const DEFAULT_KEYS_CFG: KeysCfg = {
+  version: 2,
+  entries: [
+    { action: 1, trigger: 0, enabled: true, buttons: (1 << 20) | (1 << 9), holdMs: 0 },
+    { action: 2, trigger: 0, enabled: true, buttons: (1 << 20) | (1 << 8), holdMs: 0 },
+    { action: 3, trigger: 0, enabled: true, buttons: (1 << 20) | (1 << 10), holdMs: 0 },
+    { action: 4, trigger: 0, enabled: true, buttons: (1 << 20) | (1 << 11), holdMs: 0 },
+    { action: 5, trigger: 1, enabled: false, buttons: (1 << 20) | (1 << 10), holdMs: 1000 },
+    { action: 6, trigger: 1, enabled: false, buttons: (1 << 20) | (1 << 11), holdMs: 1000 },
+  ],
+}
+const KEYS_HEADER = 2
+const KEYS_ENTRY_SIZE = 10
 export async function readKeysCfg(ble: BleLike): Promise<KeysCfg> {
   const dv = await mxRead(ble, MX_SLOT.KEYS)
-  if (dv.byteLength < 2) throw new Error('KEYS_SLOT_EMPTY')
-  return {
-    saverCombo: Math.min(b8(dv, 0), 7),
-    menuCombo: Math.min(b8(dv, 1), 7),
+  if (dv.byteLength < KEYS_HEADER || dv.getUint8(0) !== 2) throw new Error('SHORTCUT_CONFIG_VERSION_UNSUPPORTED')
+  const count = dv.getUint8(1)
+  if (count > 8 || dv.byteLength !== KEYS_HEADER + 8 * KEYS_ENTRY_SIZE) throw new Error('SHORTCUT_CONFIG_INVALID')
+  const entries: ShortcutEntry[] = []
+  for (let i = 0; i < count; i++) {
+    const o = KEYS_HEADER + i * KEYS_ENTRY_SIZE
+    entries.push({ action: dv.getUint8(o), trigger: dv.getUint8(o + 1), enabled: dv.getUint8(o + 2) !== 0,
+      buttons: dv.getUint32(o + 4, true), holdMs: dv.getUint16(o + 8, true) })
   }
+  return { version: 2, entries }
 }
-
 export async function saveKeysCfg(ble: BleLike, c: KeysCfg) {
-  await mxWrite(ble, MX_SLOT.KEYS, u8(
-    Math.max(0, Math.min(7, c.saverCombo | 0)),
-    Math.max(0, Math.min(7, c.menuCombo | 0)),
-  ))
+  if (c.entries.length > 8) throw new Error('SHORTCUT_LIMIT_EXCEEDED')
+  const b = new Uint8Array(KEYS_HEADER + 8 * KEYS_ENTRY_SIZE)
+  const dv = new DataView(b.buffer)
+  dv.setUint8(0, 2); dv.setUint8(1, c.entries.length)
+  c.entries.forEach((e, i) => {
+    const o = KEYS_HEADER + i * KEYS_ENTRY_SIZE
+    dv.setUint8(o, e.action); dv.setUint8(o + 1, e.trigger); dv.setUint8(o + 2, e.enabled ? 1 : 0)
+    dv.setUint32(o + 4, e.buttons >>> 0, true); dv.setUint16(o + 8, Math.max(0, Math.min(5000, e.holdMs | 0)), true)
+  })
+  await mxWrite(ble, MX_SLOT.KEYS, b)
 }
 
 /* ---- Bluetooth MAC spoof slot (8 bytes: magic + enabled + 6-byte address) ---- */
@@ -381,6 +415,12 @@ export async function getApiVersion(ble: BleLike): Promise<number> {
 export async function getFirmwareVersion(ble: BleLike): Promise<string> {
   const dv = await ble.read(CH.FW_VER)
   return new TextDecoder('utf-8').decode(dv).trim()
+}
+
+/** Product identity reported by esp_app_desc.project_name (command 0x07). */
+export async function getFirmwareName(ble: BleLike): Promise<string> {
+  const dv = await commandRead(ble, CMD.GET_FW_NAME)
+  return new TextDecoder('utf-8').decode(dv).replace(/\0.*$/, '').trim()
 }
 
 export async function getBdaddr(ble: BleLike): Promise<string> {

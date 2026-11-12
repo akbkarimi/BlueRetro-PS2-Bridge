@@ -47,7 +47,7 @@ export function HomePage() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-xl font-bold tracking-tight">BlueRetro MethyleneX</h1>
+        <h1 className="text-xl font-bold tracking-tight">BlueRetro PS2 Bridge</h1>
         <p className="text-sm text-muted-foreground mt-1">{t('status')} · {t('ports')} · MX</p>
       </div>
 

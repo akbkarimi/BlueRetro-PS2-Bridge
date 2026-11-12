@@ -33,6 +33,7 @@
 #include "ui_saver.h"
 #include "mx_config.h"
 #include "manager.h"
+#include "adapter/adapter.h"
 
 #ifdef CONFIG_BLUERETRO_SYSTEM_PSX_PS2
 
@@ -379,7 +380,7 @@ typedef struct {
     uint16_t ms;
 } note_t;
 
-/* Note frequencies from the MethyleneX spec workbook */
+/* Note frequencies from the BlueRetro PS2 Bridge specification */
 #define NOTE_C4  262
 #define NOTE_D4  294
 #define NOTE_E4  330
@@ -400,7 +401,7 @@ typedef struct {
 #define NOTE_G6  1568
 #define NOTE_REST 0
 
-/* The 27 MethyleneX melodies, note for note from the spec workbook */
+/* The 27 BlueRetro PS2 Bridge melodies, note for note from the spec workbook */
 static const note_t m_default[]      = { {NOTE_C5, 60}, {0, 0} };
 static const note_t m_silent[]       = { {0, 0} };
 static const note_t m_boot_chime[]   = { {NOTE_C5, 80}, {NOTE_E5, 80}, {NOTE_G5, 120}, {0, 0} };
@@ -702,7 +703,7 @@ static void render_page(uint8_t page) {
             gfx_text(0, 1, "CONTROLLERS");
             snprintf(buf, sizeof(buf), "CONNECTED: %u", (unsigned)pads);
             gfx_text(0, 12, buf);
-            snprintf(buf, sizeof(buf), "PORTS P1-P4 ACTIVE");
+            snprintf(buf, sizeof(buf), "PS2 PORTS: 1 / 2");
             gfx_text(0, 23, buf);
             break;
         case PAGE_BATTERY: {
@@ -751,7 +752,7 @@ static void render_page(uint8_t page) {
             int h = gfx_h();
             int ck_h = (h >= 48) ? 40 : (h - 10);
 
-            gfx_big_hhmm(0, 0, GFX_W, ck_h, t->hour, t->minute, 1);
+            gfx_big_hhmmss(0, 0, GFX_W, ck_h, t->hour, t->minute, t->second);
             snprintf(buf, sizeof(buf), "%04u-%02u-%02u", t->year, t->month, t->day);
             gfx_text((GFX_W - 4 - (int)strlen(buf) * 6) / 2, h - 8, buf);
             break;
@@ -1353,6 +1354,9 @@ static void ui_task(void *param) {
         if (xQueueReceive(ui_q, &msg, wait) == pdTRUE) {
             handle_msg(&msg);
         }
+        if (mx_cfg_time_tick()) {
+            redraw = true;
+        }
         update();
     }
 }
@@ -1454,40 +1458,45 @@ static struct {
     bool down;
     bool click;
     int x0, y0, x, y;
-    uint8_t src;            /* out_idx of the pad feeding the touch */
-} touch;
+} touch[WIRED_MAX_DEV];
+
+void ui_touch_reset(uint8_t src_port) {
+    if (src_port < WIRED_MAX_DEV) {
+        memset(&touch[src_port], 0, sizeof(touch[src_port]));
+    }
+}
 
 void ui_touch_feed(uint8_t valid, uint8_t down, uint16_t x, uint16_t y, uint8_t click, uint8_t src_port) {
-    if (src_port != 0xFF) {
-        touch.src = src_port;
+    if (src_port >= WIRED_MAX_DEV) {
+        return;
     }
-    if (click && !touch.click) {
+    if (click && !touch[src_port].click) {
         ui_event(UI_EVT_ACTIVITY);      /* Pressing the touchpad wakes the display / leaves a screensaver */
     }
-    touch.click = click;
+    touch[src_port].click = click;
     if (!valid) {
         return;
     }
     if (down) {
-        if (!touch.down) {
-            touch.down = true;
-            touch.x0 = x;
-            touch.y0 = y;
+        if (!touch[src_port].down) {
+            touch[src_port].down = true;
+            touch[src_port].x0 = x;
+            touch[src_port].y0 = y;
         }
-        touch.x = x;
-        touch.y = y;
+        touch[src_port].x = x;
+        touch[src_port].y = y;
         return;
     }
-    if (!touch.down) {
+    if (!touch[src_port].down) {
         return;
     }
-    touch.down = false;
+    touch[src_port].down = false;
 
-    int dx = touch.x - touch.x0;
-    int dy = touch.y - touch.y0;
+    int dx = touch[src_port].x - touch[src_port].x0;
+    int dy = touch[src_port].y - touch[src_port].y0;
     int ax = abs(dx);
     int ay = abs(dy);
-    ui_msg_t msg = { .evt = UI_EVT_TOUCH_SWIPE, .val = 0, .val2 = touch.src };
+    ui_msg_t msg = { .evt = UI_EVT_TOUCH_SWIPE, .val = 0, .val2 = src_port };
 
     if (ax >= SWIPE_X_MIN && ax > 2 * ay) {
         msg.val = (dx > 0) ? UI_SWIPE_RIGHT : UI_SWIPE_LEFT;
@@ -1715,6 +1724,7 @@ uint32_t ui_pad_color_generation(void) { return 0; }
 void ui_touch_feed(uint8_t valid, uint8_t down, uint16_t x, uint16_t y, uint8_t click, uint8_t src_port) {
     (void)valid; (void)down; (void)x; (void)y; (void)click; (void)src_port;
 }
+void ui_touch_reset(uint8_t src_port) { (void)src_port; }
 const char *ui_melody_name(uint8_t melody) { (void)melody; return ""; }
 void ui_settings_get(ui_settings_t *out) { if (out) { memset(out, 0, sizeof(*out)); } }
 void ui_settings_set(const ui_settings_t *in) { (void)in; }

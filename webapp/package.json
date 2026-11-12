@@ -1,6 +1,6 @@
 {
-  "name": "blueretro-methyleneX-webapp",
-  "version": "4.4.0",
+  "name": "blueretro-ps2-bridge-webapp",
+  "version": "1.0.0",
   "private": true,
   "scripts": {
     "dev": "next dev -p 3000 2>&1 | tee dev.log",

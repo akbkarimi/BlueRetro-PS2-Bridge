@@ -1,5 +1,5 @@
 /**
- * BlueRetro MethyleneX — protocol constants v2
+ * BlueRetro PS2 Bridge — protocol constants
  * Matched 1:1 against the real firmware sources:
  *   main/bluetooth/att_cfg.c   (GATT handles, command IDs 0x01..0xDE)
  *   main/system/mx_config.h    (MX slot structs)
@@ -32,7 +32,7 @@ export const BR_UUID = [
   '56830f56-5180-fab0-314b-2fa176799a0e', // 14 — MX config blob (read/write)
 ] as const
 
-export const DEVICE_NAME_PREFIX = 'BlueRetro'
+export const DEVICE_NAME_PREFIX = 'BRPS2'
 
 /** Characteristic indices used by the app */
 export const CH = {
@@ -81,21 +81,16 @@ export const MX_SLOT = {
   TIME: 4,    // 6 B  {year:u16le, month, day, hour, minute}
   PAGES: 5,   // read-only for writes (firmware rejects)
   FEATURES: 6, // 1 B
-  KEYS: 7,    // 2 B  {saver_combo, menu_combo} — configurable shortcut combos
+  KEYS: 7,    // v2: {version,count, entries[count]}; 10-byte action entries
   MAC: 8,     // 8 B  {magic, enabled, Bluetooth BR/EDR address[6]} — applied on reboot
 } as const
 
-/** Shortcut combo ids — must match mx_config.h MX_KEYS_COMBO_* */
-export const KEY_COMBOS = [
-  { id: 0, en: 'Home + D-Pad ↑', fa: 'Home + دکمه بالا' },
-  { id: 1, en: 'Home + D-Pad ↓', fa: 'Home + دکمه پایین' },
-  { id: 2, en: 'Home + D-Pad ←', fa: 'Home + دکمه چپ' },
-  { id: 3, en: 'Home + D-Pad →', fa: 'Home + دکمه راست' },
-  { id: 4, en: 'Share + Cross', fa: 'Share + ضربدر' },
-  { id: 5, en: 'L1 + R1', fa: 'L1 + R1' },
-  { id: 6, en: 'L2 + R2', fa: 'L2 + R2' },
-  { id: 7, en: 'L3 + R3', fa: 'L3 + R3' },
-] as const
+/** Generic controller button bits (PAD_* order from adapter.h). */
+export const PAD_BUTTON = {
+  LEFT: 8, RIGHT: 9, DOWN: 10, UP: 11,
+  HOME: 20, SHARE: 21, START: 22, L1: 25, L2: 26, L3: 27,
+  R1: 29, R2: 30, R3: 31,
+} as const
 
 /** Idle/screensaver modes — mx_config.h enum mx_idle_mode (order matters) */
 export const IDLE_MODES = [
@@ -151,7 +146,7 @@ export const LED_PALETTE = [
 /** Firmware defaults (mx_config.c mx_config_defaults) — shown pre-connect */
 export const FW_DEFAULTS = {
   audio: { enabled: 1, volume: 70, powerOn: 14, powerOff: 8, reset: 26, connect: 24, disconnect: 20 },
-  oled: { enabled: 1, rotation: 0, panelH: 64, notifications: 1, touchpadNav: 1, pages: [0, 1, 2, 3, 4] },
+  oled: { enabled: 1, rotation: 0, panelH: 32, notifications: 1, touchpadNav: 1, pages: [0, 1, 2, 3, 4] },
   led: { autoPlayer: 1, brightness: 80 },
   idle: { mode: 1, timeoutSec: 30 },
   features: 0x7f,

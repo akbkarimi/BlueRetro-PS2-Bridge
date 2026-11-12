@@ -918,7 +918,7 @@ static void clock_rect_step(void) {
     int ty = (h - ck_h) / 2;
     char b[24];
 
-    gfx_big_hhmm(0, ty, GFX_W, ck_h, t->hour, t->minute, 1);
+    gfx_big_hhmmss(0, ty, GFX_W, ck_h, t->hour, t->minute, t->second);
     if (h >= 48) {
         snprintf(b, sizeof(b), "%02u-%02u-%04u", t->day, t->month, t->year);
         gfx_text((GFX_W - (int)strlen(b) * 6) / 2, ty + ck_h + 6, b);

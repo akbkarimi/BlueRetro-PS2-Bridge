@@ -8,8 +8,22 @@
 #include <esp_timer.h>
 
 #include "mx_config.h"
+#include "adapter/adapter.h"
 
 #define MX_NVS_NS "mx_cfg"
+
+/* Only discrete gameplay buttons are valid shortcut inputs. Analog-axis
+ * direction bits (0..7) are intentionally excluded. */
+#define MX_KEYS_ALLOWED_BUTTONS (\
+    (1U << PAD_LD_LEFT) | (1U << PAD_LD_RIGHT) | \
+    (1U << PAD_LD_DOWN) | (1U << PAD_LD_UP) | \
+    (1U << PAD_RB_LEFT) | (1U << PAD_RB_RIGHT) | \
+    (1U << PAD_RB_DOWN) | (1U << PAD_RB_UP) | \
+    (1U << PAD_RD_LEFT) | (1U << PAD_RD_RIGHT) | \
+    (1U << PAD_RD_DOWN) | (1U << PAD_RD_UP) | \
+    (1U << PAD_MM) | (1U << PAD_LM) | (1U << PAD_LS) | \
+    (1U << PAD_LT) | (1U << PAD_LJ) | (1U << PAD_RM) | \
+    (1U << PAD_RS) | (1U << PAD_RT) | (1U << PAD_RJ))
 
 static struct mx_audio_cfg audio_cfg;
 static struct mx_oled_cfg oled_cfg;
@@ -19,6 +33,67 @@ static struct mx_time_cfg time_cfg;
 static struct mx_features_cfg features_cfg;
 static struct mx_keys_cfg keys_cfg;
 static struct mx_mac_cfg mac_cfg;
+static int64_t time_tick_us;
+
+static bool mx_time_cfg_valid(const struct mx_time_cfg *t)
+{
+    static const uint8_t month_days[] = {
+        31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31
+    };
+
+    if (!t || t->year < 2000 || t->year > 2099 ||
+        t->month < 1 || t->month > 12 ||
+        t->hour > 23 || t->minute > 59 || t->second > 59) {
+        return false;
+    }
+
+    uint8_t days = month_days[t->month - 1];
+    bool leap = ((t->year % 4) == 0 &&
+                 ((t->year % 100) != 0 || (t->year % 400) == 0));
+    if (t->month == 2 && leap) days = 29;
+    return t->day >= 1 && t->day <= days;
+}
+
+static bool mx_keys_cfg_valid(const struct mx_keys_cfg *cfg)
+{
+    if (!cfg || cfg->version != MX_KEYS_VERSION || cfg->count > MX_KEYS_ACTION_MAX) {
+        return false;
+    }
+
+    for (uint8_t n = 0; n < cfg->count; n++) {
+        const struct mx_shortcut_entry *e = &cfg->entries[n];
+        if (e->action < MX_SC_SAVER_ENTER || e->action > MX_SC_DISCONNECT_ALL ||
+            e->trigger > MX_SC_TRIGGER_RELEASE || e->enabled > 1 || e->reserved != 0) {
+            return false;
+        }
+        if (e->trigger == MX_SC_TRIGGER_HOLD) {
+            if (e->hold_ms < 100 || e->hold_ms > 5000) return false;
+        }
+        else if (e->hold_ms != 0) {
+            return false;
+        }
+
+        if (!e->enabled) continue;
+        /* Home is mandatory. Home+Start and Home+Share are reserved system
+         * commands and may not be shadowed by configurable actions. */
+        if ((e->buttons & (1U << PAD_MM)) == 0 ||
+            (e->buttons & ((1U << PAD_MT) | (1U << PAD_MS))) != 0 ||
+            (e->buttons & ~MX_KEYS_ALLOWED_BUTTONS) != 0 ||
+            __builtin_popcount(e->buttons) < 2) {
+            return false;
+        }
+
+        for (uint8_t j = 0; j < n; j++) {
+            const struct mx_shortcut_entry *prev = &cfg->entries[j];
+            if (prev->enabled &&
+                (((prev->buttons & e->buttons) == prev->buttons) ||
+                 ((prev->buttons & e->buttons) == e->buttons))) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
 
 static uint8_t selected_slot = MX_SLOT_AUDIO;
 static uint32_t led_generation = 1;     /* Bumped on every LED slot change */
@@ -77,7 +152,7 @@ static void mx_config_defaults(void)
     memset(&oled_cfg, MX_OLED_PAGE_EMPTY, sizeof(oled_cfg));
     oled_cfg.enabled = 1;
     oled_cfg.rotation = 0;
-    oled_cfg.panel_h = 64;
+    oled_cfg.panel_h = 32;
     oled_cfg.notifications = 1;
     oled_cfg.touchpad_nav = 1;
     oled_cfg.page_cnt = 5;
@@ -94,9 +169,17 @@ static void mx_config_defaults(void)
     idle_cfg.mode = MX_IDLE_CUBE;
     idle_cfg.idle_timeout = 30;
 
-    /* Shortcut combos: Home + D-Pad right = screensaver, Home + D-Pad left = main menu */
-    keys_cfg.saver_combo = MX_KEYS_COMBO_HOME_RIGHT;
-    keys_cfg.menu_combo = MX_KEYS_COMBO_HOME_LEFT;
+    memset(&keys_cfg, 0, sizeof(keys_cfg));
+    keys_cfg.version = MX_KEYS_VERSION;
+    keys_cfg.count = 6;
+    /* Defaults are deliberately Home-modified so ordinary gameplay buttons
+       (L3/R3, shoulders and face buttons) are never consumed as shortcuts. */
+    keys_cfg.entries[0] = (struct mx_shortcut_entry){ MX_SC_SAVER_ENTER, MX_SC_TRIGGER_PRESS, 1, 0, (1U << PAD_MM) | (1U << PAD_LD_RIGHT), 0 };
+    keys_cfg.entries[1] = (struct mx_shortcut_entry){ MX_SC_MENU_ENTER, MX_SC_TRIGGER_PRESS, 1, 0, (1U << PAD_MM) | (1U << PAD_LD_LEFT), 0 };
+    keys_cfg.entries[2] = (struct mx_shortcut_entry){ MX_SC_PAGE_NEXT, MX_SC_TRIGGER_PRESS, 1, 0, (1U << PAD_MM) | (1U << PAD_LD_DOWN), 0 };
+    keys_cfg.entries[3] = (struct mx_shortcut_entry){ MX_SC_PAGE_PREV, MX_SC_TRIGGER_PRESS, 1, 0, (1U << PAD_MM) | (1U << PAD_LD_UP), 0 };
+    keys_cfg.entries[4] = (struct mx_shortcut_entry){ MX_SC_SAVER_NEXT, MX_SC_TRIGGER_HOLD, 0, 0, (1U << PAD_MM) | (1U << PAD_LD_DOWN), 1000 };
+    keys_cfg.entries[5] = (struct mx_shortcut_entry){ MX_SC_SAVER_PREV, MX_SC_TRIGGER_HOLD, 0, 0, (1U << PAD_MM) | (1U << PAD_LD_UP), 1000 };
 
     /* Default time for the clock screensavers: 12:00, Jan 1st 2026 */
     time_cfg.year = 2026;
@@ -104,6 +187,7 @@ static void mx_config_defaults(void)
     time_cfg.day = 1;
     time_cfg.hour = 12;
     time_cfg.minute = 0;
+    time_cfg.second = 0;
 
     features_cfg.bits = 0x7F;
 
@@ -214,6 +298,11 @@ void mx_config_flush(void) {
             mx_dirty_slots &= (uint16_t)~(1U << MX_SLOT_FEATURES);
         }
     }
+    if (mx_dirty_slots & (1U << MX_SLOT_TIME)) {
+        if (mx_nvs_save("time", &time_cfg, sizeof(time_cfg))) {
+            mx_dirty_slots &= (uint16_t)~(1U << MX_SLOT_TIME);
+        }
+    }
     if (mx_dirty_slots & (1U << MX_SLOT_KEYS)) {
         if (mx_nvs_save("keys", &keys_cfg, sizeof(keys_cfg))) {
             mx_dirty_slots &= (uint16_t)~(1U << MX_SLOT_KEYS);
@@ -294,8 +383,12 @@ static void mx_config_load_all(void)
         features_cfg = f;
     }
 
-    if (mx_nvs_load("keys", &k, sizeof(k)) &&
-        k.saver_combo < MX_KEYS_COMBO_COUNT && k.menu_combo < MX_KEYS_COMBO_COUNT) {
+    struct mx_time_cfg t;
+    if (mx_nvs_load("time", &t, sizeof(t)) && mx_time_cfg_valid(&t)) {
+        time_cfg = t;
+    }
+
+    if (mx_nvs_load("keys", &k, sizeof(k)) && mx_keys_cfg_valid(&k)) {
         keys_cfg = k;
     }
 
@@ -314,6 +407,7 @@ void mx_config_init(void)
     mx_config_defaults();
     selected_slot = MX_SLOT_AUDIO;
     mx_config_load_all();
+    time_tick_us = esp_timer_get_time();
 }
 
 void mx_config_select_slot(uint8_t slot)
@@ -486,7 +580,13 @@ int32_t mx_config_write_blob(const uint8_t *src, uint32_t len)
         }
 
         memcpy(&tmp, src, sizeof(tmp));
+        if (!mx_time_cfg_valid(&tmp)) {
+            return -1;
+        }
+
         time_cfg = tmp;
+        time_tick_us = esp_timer_get_time();
+        mx_config_request_save(MX_SLOT_TIME);
         return 0;
     }
 
@@ -514,9 +614,7 @@ int32_t mx_config_write_blob(const uint8_t *src, uint32_t len)
 
         memcpy(&tmp, src, sizeof(tmp));
 
-        if (tmp.saver_combo >= MX_KEYS_COMBO_COUNT || tmp.menu_combo >= MX_KEYS_COMBO_COUNT) {
-            return -1;
-        }
+        if (!mx_keys_cfg_valid(&tmp)) return -1;
 
         mx_config_request_save(MX_SLOT_KEYS);
 
@@ -593,7 +691,47 @@ const struct mx_mac_cfg *mx_cfg_mac(void)
 
 void mx_cfg_set_time(const struct mx_time_cfg *t)
 {
-    if (t) {
+    if (mx_time_cfg_valid(t)) {
         time_cfg = *t;
+        time_tick_us = esp_timer_get_time();
+        mx_config_request_save(MX_SLOT_TIME);
     }
+}
+
+bool mx_cfg_time_tick(void)
+{
+    int64_t now = esp_timer_get_time();
+    if (!time_tick_us) {
+        time_tick_us = now;
+        return false;
+    }
+
+    int64_t elapsed = (now - time_tick_us) / 1000000;
+    if (elapsed <= 0) {
+        return false;
+    }
+    time_tick_us += elapsed * 1000000;
+
+    while (elapsed-- > 0) {
+        if (++time_cfg.second < 60) continue;
+        time_cfg.second = 0;
+        if (++time_cfg.minute < 60) continue;
+        time_cfg.minute = 0;
+        if (++time_cfg.hour < 24) continue;
+        time_cfg.hour = 0;
+
+        static const uint8_t month_days[] = {
+            31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31
+        };
+        uint8_t days = month_days[time_cfg.month - 1];
+        bool leap = ((time_cfg.year % 4) == 0 &&
+                     ((time_cfg.year % 100) != 0 || (time_cfg.year % 400) == 0));
+        if (time_cfg.month == 2 && leap) days = 29;
+        if (++time_cfg.day <= days) continue;
+        time_cfg.day = 1;
+        if (++time_cfg.month <= 12) continue;
+        time_cfg.month = 1;
+        if (++time_cfg.year > 2099) time_cfg.year = 2000;
+    }
+    return true;
 }

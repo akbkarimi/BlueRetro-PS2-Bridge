@@ -502,15 +502,16 @@ void adapter_bridge(struct bt_data *bt_data) {
     uint32_t out_mask = 0;
 
     if (bt_data->base.pids->type != BT_NONE) {
-        if (wireless_to_generic(bt_data, ctrl_input)) {
-            /* Unsupported report */
-            return;
-        }
+       if (wireless_to_generic(bt_data, ctrl_input)) {
+    /* Unsupported report */
+    return;
+}
 
-        if (bt_data->base.pids->type == PAD) {
-            adapter_ctrl_state_update(bt_data->base.pids->out_idx);
-        }
-
+/*
+ * Controller report was successfully converted to generic input.
+ * Update the WebApp controller monitor for this device's output port.
+ */
+adapter_ctrl_state_update((uint8_t)bt_data->base.pids->out_idx);
 #ifdef CONFIG_BLUERETRO_ADAPTER_INPUT_DBG
         TESTS_CMDS_LOG("\"generic_input\": {");
         adapter_debug_wireless_print(ctrl_input);
@@ -530,7 +531,7 @@ void adapter_bridge(struct bt_data *bt_data) {
 #endif
             ctrl_output[bt_data->base.pids->out_idx].index = bt_data->base.pids->out_idx;
             sys_macro_hdl(&ctrl_output[bt_data->base.pids->out_idx], &bt_data->base.flags[PAD]);
-            shortcut_hdl(&ctrl_output[bt_data->base.pids->out_idx], bt_data->base.pids->type);
+            shortcut_hdl(ctrl_input, (uint8_t)bt_data->base.pids->out_idx, bt_data->base.pids->type);
             for (uint32_t i = 0; out_mask; i++, out_mask >>= 1) {
                 if (out_mask & 0x1) {
                     ctrl_output[i].index = i;
@@ -572,7 +573,7 @@ bool adapter_bridge_fb(struct raw_fb *fb_data, struct bt_data *bt_data) {
     }
     else if (wired_adapter.system_id == WIRED_AUTO && bt_data && bt_data->base.pids &&
              fb_data->header.type == FB_TYPE_PLAYER_LED) {
-        /* Standalone use (no console detected): MethyleneX still drives the
+        /* Standalone use (no console detected): BlueRetro PS2 Bridge still drives the
            lightbar directly so the web panel / touch swipes work at the desk. */
         memset(&fb_input, 0, sizeof(fb_input));
         fb_input.wired_id = fb_data->header.wired_id;

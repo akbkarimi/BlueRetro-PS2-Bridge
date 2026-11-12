@@ -73,7 +73,7 @@ static uint32_t bt_config_state = 0;
 static uint32_t inquiry_state = 0;
 static uint32_t inquiry_override = 0;
 static RingbufHandle_t randq_hdl, encryptq_hdl;
-static char local_name[24] = "BlueRetro";
+static char local_name[24] = "BRPS2Bridge";
 
 static void bt_hci_cmd(uint16_t opcode, uint32_t cp_len);
 //static void bt_hci_cmd_inquiry(void *cp);
@@ -823,34 +823,45 @@ static void bt_hci_cmd_le_set_adv_param(void *cp) {
 }
 
 static void bt_hci_cmd_le_set_adv_data(void *cp) {
-    uint8_t adv_data[32] = {
+    /* Flags + complete 128-bit BlueRetro GATT service UUID. Keeping the UUID
+     * in the primary advertisement lets Web Bluetooth filter before showing
+     * the chooser; it must not live only in the scan response. */
+    static const uint8_t adv_data[] = {
         0x02, BT_DATA_FLAGS, (BT_LE_AD_GENERAL | BT_LE_AD_NO_BREDR),
-        0x03, BT_DATA_UUID16_SOME, 0x0f, 0x18,
-        0x0a, BT_DATA_NAME_COMPLETE, 0x00
+        0x11, BT_DATA_UUID128_ALL,
+        0x00, 0x9a, 0x79, 0x76, 0xa1, 0x2f, 0x4b, 0x31,
+        0xb0, 0xfa, 0x80, 0x51, 0x56, 0x0f, 0x83, 0x56,
+        0x06, BT_DATA_NAME_SHORTENED, 'B', 'R', 'P', 'S', '2'
     };
     struct bt_hci_cp_le_set_adv_data *le_set_adv_data = (struct bt_hci_cp_le_set_adv_data *)&bt_hci_pkt_tmp.cp;
     printf("# %s\n", __FUNCTION__);
 
-    adv_data[7] = strlen(bt_hci_get_device_name()) + 1;
-    strncat((char *)adv_data, bt_hci_get_device_name(), 22);
-
     memset(le_set_adv_data->data, 0, sizeof(le_set_adv_data->data));
-    le_set_adv_data->len = strlen((char *)adv_data);
-    memcpy(le_set_adv_data->data, adv_data, strlen((char *)adv_data));
+    le_set_adv_data->len = sizeof(adv_data);
+    memcpy(le_set_adv_data->data, adv_data, sizeof(adv_data));
 
     bt_hci_cmd(BT_HCI_OP_LE_SET_ADV_DATA, sizeof(*le_set_adv_data));
 }
 
 static void bt_hci_cmd_le_set_scan_rsp_data(void *cp) {
-    uint8_t scan_rsp[] = {
-        0x11, BT_DATA_UUID128_ALL, 0x56, 0x9a, 0x79, 0x76, 0xa1, 0x2f, 0x4b, 0x31, 0xb0, 0xfa, 0x80, 0x51, 0x56, 0x0f, 0x83, 0x00
-    };
+    /* Complete per-device name is included in the scan response; the primary
+     * advertisement already carries the BRPS2 shortened-name filter token. */
+    uint8_t scan_rsp[31] = {0};
+    const char *name = bt_hci_get_device_name();
+    size_t name_len = strlen(name);
     struct bt_hci_cp_le_set_scan_rsp_data *le_set_scan_rsp_data = (struct bt_hci_cp_le_set_scan_rsp_data *)&bt_hci_pkt_tmp.cp;
     printf("# %s\n", __FUNCTION__);
 
+    if (name_len > sizeof(scan_rsp) - 2) {
+        name_len = sizeof(scan_rsp) - 2;
+    }
+    scan_rsp[0] = (uint8_t)(name_len + 1);
+    scan_rsp[1] = BT_DATA_NAME_COMPLETE;
+    memcpy(&scan_rsp[2], name, name_len);
+
     memset(le_set_scan_rsp_data->data, 0, sizeof(le_set_scan_rsp_data->data));
-    le_set_scan_rsp_data->len = sizeof(scan_rsp);
-    memcpy(le_set_scan_rsp_data->data, scan_rsp, sizeof(scan_rsp));
+    le_set_scan_rsp_data->len = (uint8_t)(name_len + 2);
+    memcpy(le_set_scan_rsp_data->data, scan_rsp, le_set_scan_rsp_data->len);
 
     bt_hci_cmd(BT_HCI_OP_LE_SET_SCAN_RSP_DATA, sizeof(*le_set_scan_rsp_data));
 }
@@ -1335,10 +1346,10 @@ static int32_t bt_hci_get_encrypt_context(struct bt_dev **device, bt_hci_le_cb_t
 }
 
 static void bt_hci_set_device_name(void) {
-    strcat(local_name, "_");
-    strncat(local_name, wired_get_sys_name(), 6);
-    strcat(local_name, "_");
-    snprintf(local_name + strlen(local_name), 5, "%02X%02X", local_bdaddr[1], local_bdaddr[0]);
+    /* Do not append the upstream console name: this product is PS2-only.
+     * The short fixed prefix is also used by the Web Bluetooth chooser. */
+    snprintf(local_name, sizeof(local_name), "BRPS2Bridge_%02X%02X",
+        local_bdaddr[1], local_bdaddr[0]);
     printf("# local_name: %s\n", local_name);
 }
 
@@ -1616,7 +1627,10 @@ void bt_hci_evt_hdlr(struct bt_hci_pkt *bt_hci_evt_pkt) {
         case BT_HCI_EVT_DISCONN_COMPLETE:
         {
             struct bt_hci_evt_disconn_complete *disconn_complete = (struct bt_hci_evt_disconn_complete *)bt_hci_evt_pkt->evt_data;
-            printf("# BT_HCI_EVT_DISCONN_COMPLETE\n");
+            printf("# BT_HCI_EVT_DISCONN_COMPLETE handle=0x%04X reason=0x%02X status=0x%02X\\n",
+                disconn_complete->handle,
+                disconn_complete->reason,
+                disconn_complete->status);
             bt_host_get_dev_from_handle(disconn_complete->handle, &device);
             if (device) {
                 printf("# DISCONN from dev: %ld\n", device->ids.id);

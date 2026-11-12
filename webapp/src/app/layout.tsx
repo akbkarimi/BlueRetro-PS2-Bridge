@@ -3,10 +3,10 @@ import "./globals.css";
 import { Toaster } from "@/components/ui/sonner";
 
 export const metadata: Metadata = {
-  title: "BlueRetro MethyleneX WebApp",
+  title: "BlueRetro PS2 Bridge WebApp",
   description:
-    "Config tool for the real BlueRetro MethyleneX adapter over Web Bluetooth: OLED 128x32/128x64, screensavers, 27 melodies, per-port LED colors, ports and system commands.",
-  keywords: ["BlueRetro", "MethyleneX", "ESP32", "PS2", "Web Bluetooth", "OLED", "SSD1306"],
+    "Config tool for the BlueRetro PS2 Bridge over Web Bluetooth: OLED 128x32/128x64, screensavers, 27 melodies, per-port LED colors, ports and system commands.",
+  keywords: ["BlueRetro", "ESP32", "PS2", "Web Bluetooth", "OLED", "SSD1306"],
   icons: { icon: "https://z-cdn.chatglm.cn/z-ai/static/logo.svg" },
 };
 

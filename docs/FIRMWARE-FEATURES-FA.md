@@ -69,36 +69,42 @@
 |---|---|
 | ۱- معماری نمایشگر ۱۲۸×۳۲/۶۴ | ✅ runtime |
 | ۲- هماهنگی ارتفاع نمایشگر با WebApp و NVS | ✅ اسلات OLED |
-| ۳- GPIO و LED وضعیت روی GPIO15 | ✅ (در فورک: `CONFIG_BLUERETRO_HW_IBLUECONTROL` → LED_P1_PIN=15) |
+| ۳- تفکیک LEDهای پورت Bluetooth و LEDهای Analog کنسول | ✅ GPIO2/4 برای اتصال Bluetooth؛ GPIO12/15 برای Analog پورت‌های PS2 |
 | ۴- توسعه اسکرین‌سیورها با انتخاب از WebApp | ✅ ۱۲ اسکرین‌سیور |
-| ۵- ملودی‌های MethyleneX در Audio Engine | ✅ ۲۷ ملودی |
+| ۵- ملودی‌های BlueRetro PS2 Bridge در Audio Engine | ✅ ۲۷ ملودی |
 | ۶- مدیر میانبرهای DS4/DS5 | ✅ shortcut.c |
 | ۷- پالت رنگ مستقل هر دسته + HID | ✅ manual/auto + چشمک اتصال |
 | ۸- یکپارچه‌سازی | ✅ sync زنده MX↔UI |
 
-## ساخت
-دقیقاً مانند خود فورک (ESP-IDF **v6.1**). نسخه‌ی فریمویر از `PROJECT_VER` در CMakeLists می‌آید (الان: `mx-v4`) و WebApp همان را در صفحه Home نشان می‌دهد — فایل `version.txt` دیگر لازم نیست.
+## ساخت Firmware
 
-**PSX/PS2 (پیش‌فرض MethyleneX روی برد hw2):**
+این مخزن برای محصول **BlueRetro PS2 Bridge** روی ESP32 HW2 و فقط برای PlayStation 2 پیکربندی شده است. نسخه پروژه از `CMakeLists.txt` خوانده می‌شود (`ps2b-v1.0`).
+
 ```bash
-idf.py fullclean
-rm -f sdkconfig sdkconfig.old
-idf.py -D IDF_TARGET=esp32 -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;configs/hw2/playstation" reconfigure build
-idf.py -p /dev/ttyUSB0 flash monitor
+. ~/esp/v6.1/esp-idf/export.sh
+idf.py build
 ```
 
-**SNES (کانفیگ iBlueControl):**
+برای فلش پس از Build موفق:
+
 ```bash
-idf.py fullclean
-rm -f sdkconfig sdkconfig.old
-idf.py -D IDF_TARGET=esp32 -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;configs/hw2/ibluecontrol_snes" reconfigure build
+idf.py -p /dev/ttyUSB0 -b 115200 flash
 ```
 
-⚠️ دو نکته‌ی مهم:
-1. متغیر محیطی `BR_SYS` فقط **اسم پروژه/باینری** را عوض می‌کند؛ انتخاب واقعی سیستم فقط از `SDKCONFIG_DEFAULTS` انجام می‌شود. اگر `sdkconfig` قبلی حذف نشود، کانفیگ جدید **نادیده گرفته می‌شود** (همان باگ «فریمویر کش بود»).
-2. متغیر `CONFIG_BLUERETRO_HW_IBLUECONTROL` فقط با `SYSTEM_SNES` مجاز است (پین‌اوت SNES داخلی: LED‌ها {15,4,15,4}، OE روی IO2/IO27، دکمه روی GPIO16). در بیلد PSX پین‌اوت استاندارد hw2 فعال است: **LED پورت۱=IO2، پورت۲=IO4**، دکمه BOOT=GPIO0، OLED روی IO17(SCL)/IO18(SDA)، بازر IO23.
+مانیتور سریال:
 
-هیچ سورس جدیدی به کانفیگ‌های دیگر تزریق نشده؛ همه تغییرات UI زیر `CONFIG_BLUERETRO_SYSTEM_PSX_PS2` گارد شده‌اند (و استاب‌های non-PSX هم‌امضا با ui.h هستند). فایل جدید `adapter/shortcut.c` به `main/CMakeLists.txt` اضافه شد.
+```bash
+idf.py -p /dev/ttyUSB0 monitor -b 921600
+```
+
+### تفکیک LEDها و وضعیت دستگاه
+
+- **GPIO2 و GPIO4:** نشانگر اتصال Bluetooth برای پورت‌های ۱ و ۲.
+- **GPIO12 و GPIO15:** نشانگر Analog mode برای پورت فیزیکی PS2 شماره ۱ و ۲؛ این پایه‌ها در `main/wired/ps_spi.c` مقداردهی می‌شوند و نباید به‌عنوان LED عمومی پورت در `manager.c` مقداردهی شوند.
+- **وضعیت عمومی Firmware:** صفحه STATUS نمایشگر OLED وضعیت READY / PAIRING / ERROR و تعداد دسته‌های متصل را نشان می‌دهد. GPIO15 برای وضعیت عمومی دستگاه استفاده نمی‌شود.
+- **OLED:** ماژول فیزیکی این برد ۱۲۸×۳۲، با SSD1306 و آدرس `0x3C` است؛ پایه‌های I²C نرم‌افزاری GPIO17 (SCL) و GPIO18 (SDA) هستند. Firmware قابلیت پیکربندی ارتفاع پنل را نیز دارد، اما ارتفاع سخت‌افزار نصب‌شده ۳۲ پیکسل است.
+
+برای جدول کامل اتصالات و نکات الکتریکی، [مستند Pinout سخت‌افزار](HARDWARE-PINOUT-FA.md) را ببینید.
 
 ## پروتکل BLE — چک‌لیست برای WebApp
 - سرویس: `56830f56-5180-fab0-314b-2fa176799a00`
