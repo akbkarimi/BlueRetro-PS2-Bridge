@@ -124,10 +124,16 @@ void ui_color_flash_stop(uint8_t out_idx);
 /* Current temporary lightbar override for out_idx, or false when no flash runs. */
 bool ui_color_flash_get(uint8_t out_idx, uint32_t *rgb);
 
-/* Battery level of the pad wired to out_idx, 0..100 percent, 0xFF = unknown.
-   Backed by the battery data the firmware collects (BAS read / status report). */
-void ui_battery_set(uint8_t out_idx, uint8_t percent);
+/* Battery data is indexed by the controller's wired output port. */
+#define UI_BATTERY_UNKNOWN      0
+#define UI_BATTERY_DISCHARGING  1
+#define UI_BATTERY_CHARGING     2
+#define UI_BATTERY_FULL         3
+#define UI_BATTERY_PERCENT_NA   0xFF
+
+void ui_battery_set(uint8_t out_idx, uint8_t percent, uint8_t status);
 uint8_t ui_battery_get(uint8_t out_idx);
+uint8_t ui_battery_status_get(uint8_t out_idx);
 
 bool ui_audio_preview(uint8_t melody);
 bool ui_audio_preview_stop(void);

@@ -67,6 +67,20 @@ const dict = {
   port: { en: 'Port', fa: 'پورت' },
   deviceInfo: { en: 'Device', fa: 'دستگاه' },
   quickActions: { en: 'Quick actions', fa: 'اقدامات سریع' },
+  controllerBattery: { en: 'Controller battery', fa: 'باتری دسته‌ها' },
+  controllerBatteryDesc: {
+    en: 'Live battery telemetry from each connected controller',
+    fa: 'اطلاعات زنده باتری هر دسته متصل',
+  },
+  batteryUnknown: { en: 'Unknown', fa: 'نامشخص' },
+  batteryCharging: { en: 'Charging', fa: 'در حال شارژ' },
+  batteryFull: { en: 'Full', fa: 'کامل' },
+  batteryDischarging: { en: 'On battery', fa: 'در حال مصرف' },
+  batteryLevelOnly: { en: 'Level available', fa: 'فقط سطح باتری' },
+  batteryFirmwareRequired: {
+    en: 'Battery monitoring requires the updated PS2 Bridge firmware.',
+    fa: 'نمایش باتری به نسخه جدید فریمور PS2 Bridge نیاز دارد.',
+  },
 
   // display page
   displayDesc: {

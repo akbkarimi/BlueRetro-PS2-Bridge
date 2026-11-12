@@ -8,7 +8,7 @@ if (!process.env.BR_PROTOCOL_BUILD_DIR) {
   throw new Error('BR_PROTOCOL_BUILD_DIR is required')
 }
 
-const { getControllerState } = require(
+const { getControllerState, getControllerBattery } = require(
   path.join(process.env.BR_PROTOCOL_BUILD_DIR, 'protocol.js')
 )
 
@@ -121,6 +121,47 @@ test('rejects invalid ports without sending BLE commands', async (t) => {
         { message: 'CONTROLLER_PORT_INVALID' }
       )
 
+      assert.equal(ble.writes.length, 0)
+      assert.equal(ble.reads.length, 0)
+    })
+  }
+})
+
+
+test('decodes controller battery percentage and charging status', async () => {
+  const response = new DataView(new Uint8Array([75, 2]).buffer)
+  const ble = makeBle(response)
+
+  const battery = await getControllerBattery(ble, 1)
+
+  assert.deepEqual(battery, { percent: 75, status: 'charging' })
+  assert.deepEqual(ble.writes, [{ index: 7, bytes: [0x19, 1] }])
+  assert.deepEqual(ble.reads, [7])
+})
+
+test('decodes unknown battery level without displaying zero percent', async () => {
+  const response = new DataView(new Uint8Array([0xFF, 0]).buffer)
+  const ble = makeBle(response)
+
+  const battery = await getControllerBattery(ble, 0)
+
+  assert.deepEqual(battery, { percent: null, status: 'unknown' })
+})
+
+test('rejects unsupported battery response sizes and invalid ports', async (t) => {
+  const shortBle = makeBle(new DataView(new ArrayBuffer(1)))
+  await assert.rejects(
+    getControllerBattery(shortBle, 0),
+    { message: 'CONTROLLER_BATTERY_UNSUPPORTED' }
+  )
+
+  for (const port of [-1, 12, 1.5, NaN]) {
+    await t.test(`rejects battery port ${String(port)}`, async () => {
+      const ble = makeBle(new DataView(new Uint8Array([50, 1]).buffer))
+      await assert.rejects(
+        getControllerBattery(ble, port),
+        { message: 'CONTROLLER_PORT_INVALID' }
+      )
       assert.equal(ble.writes.length, 0)
       assert.equal(ble.reads.length, 0)
     })

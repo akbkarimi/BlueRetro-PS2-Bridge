@@ -43,6 +43,7 @@
 #define CFG_CMD_AUDIO_PREVIEW_STOP 0x16
 #define CFG_CMD_AUDIO_SETTINGS 0x17
 #define CFG_CMD_GET_CONTROLLER_STATE 0x18
+#define CFG_CMD_GET_CONTROLLER_BATTERY 0x19
 #define CFG_CMD_SYS_DEEP_SLEEP 0x37
 #define CFG_CMD_SYS_RESET 0x38
 #define CFG_CMD_SYS_FACTORY 0x39
@@ -503,6 +504,16 @@ static void bt_att_cfg_cmd_controller_state_rsp(uint16_t handle) {
     bt_att_cmd(handle, BT_ATT_OP_READ_RSP, sizeof(state));
 }
 
+static void bt_att_cfg_cmd_controller_battery_rsp(uint16_t handle) {
+    uint8_t battery[2] = {
+        ui_battery_get(cfg_cmd_port),
+        ui_battery_status_get(cfg_cmd_port),
+    };
+
+    memcpy(bt_hci_pkt_tmp.att_data, battery, sizeof(battery));
+    bt_att_cmd(handle, BT_ATT_OP_READ_RSP, sizeof(battery));
+}
+
 static void bt_att_cfg_cmd_rd_hdlr(uint16_t handle, uint16_t attr_handle) {
     switch (cfg_cmd) {
         case CFG_CMD_GET_ABI_VER:
@@ -531,6 +542,9 @@ static void bt_att_cfg_cmd_rd_hdlr(uint16_t handle, uint16_t attr_handle) {
             break;
         case CFG_CMD_GET_CONTROLLER_STATE:
             bt_att_cfg_cmd_controller_state_rsp(handle);
+            break;
+        case CFG_CMD_GET_CONTROLLER_BATTERY:
+            bt_att_cfg_cmd_controller_battery_rsp(handle);
             break;
         case CFG_CMD_AUDIO_SETTINGS: {
             ui_audio_settings_t a;
@@ -563,6 +577,7 @@ static void bt_att_cfg_cmd_wr_hdlr(struct bt_dev *device, uint8_t *data, uint32_
 
     switch (cfg_cmd) {
         case CFG_CMD_GET_CONTROLLER_STATE:
+        case CFG_CMD_GET_CONTROLLER_BATTERY:
             if (len != 2 || data[1] >= WIRED_MAX_DEV) {
                 bt_att_cmd_error_rsp(device->acl_handle, BT_ATT_OP_WRITE_REQ,
                     BR_CFG_CMD_CHRC_HDL, BT_ATT_ERR_INVALID_ATTRIBUTE_LEN);

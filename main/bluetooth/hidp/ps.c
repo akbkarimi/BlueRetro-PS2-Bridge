@@ -337,13 +337,38 @@ void bt_hid_ps_hdlr(struct bt_dev *device, struct bt_hci_pkt *bt_hci_acl_pkt, ui
                         bt_type_update(device->ids.id, BT_PS, BT_SUBTYPE_DEFAULT);
                         device->ids.report_type = BT_HIDP_PS4_STATUS;
                     }
-                    /* DS4 battery: payload byte 29 (full report byte 30),
-                       HIGH nibble = level 0..10 (low nibble = charging state). */
-                    if (hidp_data_len > 29) {
-                        uint8_t n = (bt_hci_acl_pkt->hidp_data[29] >> 4) & 0x0F;
+                    /*
+                     * DS4 Bluetooth report 0x11 carries its report ID in the
+                     * HIDP header. The two reserved bytes remain in hidp_data,
+                     * so Linux's report byte 32 maps to hidp_data[31].
+                     * Bits 0..3 encode battery capacity; bit 4 is cable state.
+                     */
+                    if (hidp_data_len > 31) {
+                        uint8_t status = bt_hci_acl_pkt->hidp_data[31];
+                        uint8_t level = status & 0x0F;
+                        uint8_t battery_pct = UI_BATTERY_PERCENT_NA;
+                        uint8_t battery_state = UI_BATTERY_UNKNOWN;
+
+                        if (status & (1u << 4)) {
+                            /* On cable: levels 0..10 are 0..100%; 11 is full. */
+                            if (level <= 10) {
+                                battery_pct = (uint8_t)(level * 10);
+                                battery_state = UI_BATTERY_CHARGING;
+                            }
+                            else if (level == 11) {
+                                battery_pct = 100;
+                                battery_state = UI_BATTERY_FULL;
+                            }
+                        }
+                        else if (level <= 9) {
+                            /* On battery, DS4 reports 0..9 for 10..100%. */
+                            battery_pct = (uint8_t)((level + 1) * 10);
+                            battery_state = UI_BATTERY_DISCHARGING;
+                        }
+                        /* Reserved/invalid levels stay Unknown (never fake 100%). */
 
                         ui_battery_set((uint8_t)device->ids.out_idx,
-                            (n > 10) ? 100 : (uint8_t)(n * 10));
+                            battery_pct, battery_state);
                     }
 #ifdef CONFIG_BLUERETRO_ADAPTER_RUMBLE_TEST
                     struct bt_hidp_ps4_set_conf rumble4 = {

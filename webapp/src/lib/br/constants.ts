@@ -63,6 +63,7 @@ export const CMD = {
   AUDIO_PREVIEW_STOP: 0x16, // [0x16]
   AUDIO_SETTINGS: 0x17,     // read: 10 B response / write: [0x17, en, vol, sound×8]
   GET_CONTROLLER_STATE: 0x18, // write: [0x18, port], read: 17 B input snapshot
+  GET_CONTROLLER_BATTERY: 0x19, // write: [0x19, port], read: [percent, status]
   SYS_DEEP_SLEEP: 0x37,
   SYS_RESET: 0x38,
   SYS_FACTORY: 0x39,

@@ -103,7 +103,11 @@ static volatile uint8_t mx_geom_pending = 0;   /* Apply MX panel geometry in the
 /* ---------------- Battery cache (per wired port) ---------------- */
 
 #define UI_BATT_PORTS 8
-static uint8_t battery_pct[UI_BATT_PORTS];  /* 0xFF = unknown */
+/* Never display a fabricated 0% before the first battery report arrives. */
+static uint8_t battery_pct[UI_BATT_PORTS] = {
+    0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF
+};
+static uint8_t battery_status[UI_BATT_PORTS];
 
 /* ---------------- Lightbar connect flash (red -> orange -> color) ---------------- */
 
@@ -680,6 +684,47 @@ static void render_status(void) {
     gfx_set_offset(0, 0);
 }
 
+/* Draw one compact battery panel in a 64-pixel half of the 128x32 OLED. */
+static void render_battery_panel(uint8_t port, int x0) {
+    const int icon_x = x0 + 18;
+    const int icon_y = 8;
+    const uint8_t percent = (port < UI_BATT_PORTS) ? battery_pct[port] : UI_BATTERY_PERCENT_NA;
+    const uint8_t status = (port < UI_BATT_PORTS) ? battery_status[port] : UI_BATTERY_UNKNOWN;
+    char value[8];
+
+    gfx_text(x0 + 5, 1, (port == 0) ? "P1" : "P2");
+
+    /* Battery body, terminal and proportional fill. */
+    gfx_rect(icon_x, icon_y, 23, 13, 1);
+    gfx_fill_rect(icon_x + 23, icon_y + 4, 3, 5, 1);
+    if (percent != UI_BATTERY_PERCENT_NA) {
+        int fill_w = ((int)percent * 19 + 50) / 100;
+        if (fill_w > 0) {
+            gfx_fill_rect(icon_x + 2, icon_y + 2, fill_w, 9, 1);
+        }
+    }
+
+    /* Charging bolt is cut out of the filled battery and drawn in white. */
+    if (status == UI_BATTERY_CHARGING) {
+        gfx_fill_rect(icon_x + 13, icon_y + 1, 8, 11, 0);
+        gfx_line(icon_x + 19, icon_y + 2, icon_x + 15, icon_y + 7, 1);
+        gfx_line(icon_x + 20, icon_y + 2, icon_x + 16, icon_y + 7, 1);
+        gfx_line(icon_x + 16, icon_y + 6, icon_x + 19, icon_y + 6, 1);
+        gfx_line(icon_x + 15, icon_y + 7, icon_x + 18, icon_y + 7, 1);
+        gfx_line(icon_x + 18, icon_y + 6, icon_x + 15, icon_y + 11, 1);
+        gfx_line(icon_x + 19, icon_y + 6, icon_x + 16, icon_y + 11, 1);
+    }
+
+    if (percent == UI_BATTERY_PERCENT_NA) {
+        snprintf(value, sizeof(value), "--");
+    }
+    else {
+        snprintf(value, sizeof(value), "%u%%", (unsigned)percent);
+    }
+    int text_w = (int)strlen(value) * 6;
+    gfx_text(x0 + (64 - text_w) / 2, 24, value);
+}
+
 /* Info pages shown in the active stage (Home + D-Pad left/right cycles) */
 static void render_page(uint8_t page) {
     static const int8_t shift[4][2] = { {0, 0}, {1, 0}, {1, 1}, {0, 1} };
@@ -706,27 +751,12 @@ static void render_page(uint8_t page) {
             snprintf(buf, sizeof(buf), "PS2 PORTS: 1 / 2");
             gfx_text(0, 23, buf);
             break;
-        case PAGE_BATTERY: {
-            uint8_t b1 = (UI_BATT_PORTS > 0) ? battery_pct[0] : 0xFF;
-            uint8_t b2 = (UI_BATT_PORTS > 1) ? battery_pct[1] : 0xFF;
-
-            gfx_text(0, 1, "BATTERY");
-            if (b1 == 0xFF) {
-                gfx_text(0, 12, "P1: N/A");
-            }
-            else {
-                snprintf(buf, sizeof(buf), "P1: %u%%", (unsigned)b1);
-                gfx_text(0, 12, buf);
-            }
-            if (b2 == 0xFF) {
-                gfx_text(0, 23, "P2: N/A");
-            }
-            else {
-                snprintf(buf, sizeof(buf), "P2: %u%%", (unsigned)b2);
-                gfx_text(0, 23, buf);
-            }
+        case PAGE_BATTERY:
+            /* A dedicated half-screen for each PS2 controller port. */
+            gfx_line(63, 1, 63, 30, 1);
+            render_battery_panel(0, 0);
+            render_battery_panel(1, 64);
             break;
-        }
         case PAGE_COLOR: {
             /* Show what the pads really get: the MX LED slot is the live source
                (web panel + touch swipes write it), not the legacy UI copy. */
@@ -1215,7 +1245,7 @@ static void handle_msg(const ui_msg_t *msg) {
         case UI_EVT_TOUCH_SWIPE:
             /* Stage dependent meaning (spec workbook, touchpad sheet):
                screensaver stage: left/right = previous/next screensaver, up/down = color
-               active stage:      left/right = pad 1/2 battery toast, up/down = color */
+               active stage:      left/right = previous/next info page, up/down = color */
             if (stage == STG_SAVER || forced_saver) {
                 switch (msg->val) {
                     case UI_SWIPE_LEFT:
@@ -1641,14 +1671,29 @@ bool ui_color_flash_get(uint8_t out_idx, uint32_t *rgb) {
     return true;
 }
 
-void ui_battery_set(uint8_t out_idx, uint8_t percent) {
-    if (out_idx < UI_BATT_PORTS) {
-        battery_pct[out_idx] = percent;
+void ui_battery_set(uint8_t out_idx, uint8_t percent, uint8_t status) {
+    if (out_idx >= UI_BATT_PORTS) {
+        return;
     }
+
+    if (percent != UI_BATTERY_PERCENT_NA && percent > 100) {
+        percent = UI_BATTERY_PERCENT_NA;
+        status = UI_BATTERY_UNKNOWN;
+    }
+    if (status > UI_BATTERY_FULL) {
+        status = UI_BATTERY_UNKNOWN;
+    }
+
+    battery_pct[out_idx] = percent;
+    battery_status[out_idx] = status;
 }
 
 uint8_t ui_battery_get(uint8_t out_idx) {
-    return (out_idx < UI_BATT_PORTS) ? battery_pct[out_idx] : 0xFF;
+    return (out_idx < UI_BATT_PORTS) ? battery_pct[out_idx] : UI_BATTERY_PERCENT_NA;
+}
+
+uint8_t ui_battery_status_get(uint8_t out_idx) {
+    return (out_idx < UI_BATT_PORTS) ? battery_status[out_idx] : UI_BATTERY_UNKNOWN;
 }
 
 /* Push the MX config slots into the UI/audio settings.
@@ -1744,7 +1789,10 @@ void ui_play_event(uint8_t evt) { (void)evt; }
 void ui_color_flash_start(uint8_t out_idx) { (void)out_idx; }
 void ui_color_flash_stop(uint8_t out_idx) { (void)out_idx; }
 bool ui_color_flash_get(uint8_t out_idx, uint32_t *rgb) { (void)out_idx; (void)rgb; return false; }
-void ui_battery_set(uint8_t out_idx, uint8_t percent) { (void)out_idx; (void)percent; }
-uint8_t ui_battery_get(uint8_t out_idx) { (void)out_idx; return 0xFF; }
+void ui_battery_set(uint8_t out_idx, uint8_t percent, uint8_t status) {
+    (void)out_idx; (void)percent; (void)status;
+}
+uint8_t ui_battery_get(uint8_t out_idx) { (void)out_idx; return UI_BATTERY_PERCENT_NA; }
+uint8_t ui_battery_status_get(uint8_t out_idx) { (void)out_idx; return UI_BATTERY_UNKNOWN; }
 
 #endif

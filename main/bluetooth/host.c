@@ -735,6 +735,7 @@ reset_dev:
         adapter_reset_controller_state((uint8_t)out_idx);
         shortcut_reset((uint8_t)out_idx);
         ui_touch_reset((uint8_t)out_idx);
+        ui_battery_set((uint8_t)out_idx, UI_BATTERY_PERCENT_NA, UI_BATTERY_UNKNOWN);
     }
 
     adapter_init_buffer(dev_id);

@@ -419,10 +419,9 @@ static void bt_att_hid_start_batt_lvl(struct bt_dev *device,
 
 static void bt_att_hid_process_batt_lvl(struct bt_dev *device,
         struct bt_att_hid *hid_data, uint32_t att_len, uint8_t *data, uint32_t data_len) {
-    /* GATT Battery Level: one byte, 0..100 percent. Keep it for the OLED
-       battery page / touchpad battery toasts. */
+    /* GATT Battery Level is a percentage; charging state is not provided by BAS. */
     if (data && data_len > 0 && data[0] <= 100) {
-        ui_battery_set((uint8_t)device->ids.out_idx, data[0]);
+        ui_battery_set((uint8_t)device->ids.out_idx, data[0], UI_BATTERY_UNKNOWN);
         printf("dev: %ld battery: %u%%\n", device->ids.id, data[0]);
     }
     bt_att_hid_start_next_state(device, hid_data);

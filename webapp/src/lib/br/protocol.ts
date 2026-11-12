@@ -406,6 +406,30 @@ export async function getControllerState(ble: BleLike, port: number): Promise<Co
   }
 }
 
+export type ControllerBatteryStatus = 'unknown' | 'discharging' | 'charging' | 'full'
+
+export interface ControllerBattery {
+  percent: number | null
+  status: ControllerBatteryStatus
+}
+
+const BATTERY_STATUS: ControllerBatteryStatus[] = [
+  'unknown', 'discharging', 'charging', 'full',
+]
+
+export async function getControllerBattery(ble: BleLike, port: number): Promise<ControllerBattery> {
+  if (!Number.isInteger(port) || port < 0 || port > 11) throw new Error('CONTROLLER_PORT_INVALID')
+  const dv = await commandRead(ble, CMD.GET_CONTROLLER_BATTERY, port)
+  if (dv.byteLength !== 2) throw new Error('CONTROLLER_BATTERY_UNSUPPORTED')
+
+  const rawPercent = dv.getUint8(0)
+  const rawStatus = dv.getUint8(1)
+  return {
+    percent: rawPercent <= 100 ? rawPercent : null,
+    status: BATTERY_STATUS[rawStatus] ?? 'unknown',
+  }
+}
+
 /* ---------------- version / identity ---------------- */
 export async function getApiVersion(ble: BleLike): Promise<number> {
   const dv = await ble.read(CH.API_VER)
